@@ -1,3 +1,4 @@
+@import 'leaflet/dist/leaflet.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -28,8 +29,9 @@ a:hover {
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
+  /* Remove flex centering to allow full-height content */
+  /* display: flex; */
+  /* place-items: center; */
   min-width: 320px;
   min-height: 100vh;
 }
@@ -69,4 +71,10 @@ button:focus-visible {
   button {
     background-color: #f9f9f9;
   }
+}
+html, body, #root {
+  height: 100%;
+}
+#root {
+  height: 100vh;
 }
