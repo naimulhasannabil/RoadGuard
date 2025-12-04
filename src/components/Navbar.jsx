@@ -9,6 +9,9 @@ export default function Navbar() {
           <NavLink to="/" className="hover:text-blue-600">Map</NavLink>
           <NavLink to="/report" className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">Report Alert</NavLink>
           <NavLink to="/profile" className="hover:text-blue-600">Profile</NavLink>
+          <NavLink to="/admin" className="hover:text-blue-600">Admin</NavLink>
+          <NavLink to="/login" className="hover:text-blue-600">Login</NavLink>
+          <NavLink to="/signup" className="hover:text-blue-600">Signup</NavLink>
         </div>
       </div>
     </nav>
