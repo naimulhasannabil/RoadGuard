@@ -1,6 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet'
+import { useEffect, useMemo, useState, useRef } from 'react'
+import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet'
 import { useAlerts } from '../context/AlertsContext'
+import FilterListIcon from '@mui/icons-material/FilterList'
+import MyLocationIcon from '@mui/icons-material/MyLocation'
+import SearchIcon from '@mui/icons-material/Search'
+import VerifiedIcon from '@mui/icons-material/Verified'
+import StraightenIcon from '@mui/icons-material/Straighten'
 
 const severityColor = {
   Low: '#2ecc71',
@@ -19,6 +24,16 @@ function haversineMeters(lat1, lon1, lat2, lon2) {
     Math.sin(dLon / 2) * Math.sin(dLon / 2)
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
   return R * c
+}
+
+function MapController({ onMapReady }) {
+  const map = useMap()
+  useEffect(() => {
+    if (map && onMapReady) {
+      onMapReady(map)
+    }
+  }, [map, onMapReady])
+  return null
 }
 
 export default function MapPage() {
@@ -89,77 +104,150 @@ export default function MapPage() {
   }, [alerts, filters, userLocation])
 
   return (
-    <div className="w-full">
-      <div className="max-w-6xl mx-auto p-4 grid grid-cols-1 md:grid-cols-5 gap-4">
-        <div className="md:col-span-1 space-y-3">
-          <h3 className="font-semibold">Filters</h3>
-          <div>
-            <label className="block text-sm">Type</label>
-            <select
-              className="w-full border rounded p-2"
-              value={filters.type}
-              onChange={(e) => setFilters((f) => ({ ...f, type: e.target.value }))}
+    <div className="w-full min-h-screen bg-gray-50">
+      <div className="max-w-full mx-auto p-3 grid grid-cols-1 lg:grid-cols-6 gap-4">
+        {/* Enhanced Filters Sidebar */}
+        <div className="lg:col-span-1 space-y-4">
+          <div className="bg-white rounded-2xl shadow-lg p-5 border border-gray-100 sticky top-20">
+            <div className="flex items-center gap-2 mb-5 pb-3 border-b border-gray-200">
+              <FilterListIcon className="text-blue-600" />
+              <h3 className="text-lg font-bold text-gray-800">Filters</h3>
+            </div>
+
+            {/* Stats Summary */}
+            <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl p-4 mb-5">
+              <div className="text-center">
+                <div className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                  {filtered.length}
+                </div>
+                <div className="text-xs text-gray-600 mt-1">Alerts Found</div>
+              </div>
+            </div>
+
+            {/* Hazard Type Filter */}
+            <div className="mb-4">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                🚨 Hazard Type
+              </label>
+              <select
+                className="w-full border-2 border-gray-200 rounded-lg p-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all outline-none bg-white"
+                value={filters.type}
+                onChange={(e) => setFilters((f) => ({ ...f, type: e.target.value }))}
+              >
+                {['All','Potholes','Accident','Floods','Broken Roads','Landslides','Road Closures','Police Checkpoints','Heavy Traffic Jam','Fire on Roadside','Animal Crossing'].map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Severity Filter */}
+            <div className="mb-4">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                ⚡ Severity Level
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { value: 'All', color: 'bg-gray-100 text-gray-700 border-gray-300', icon: '🔘' },
+                  { value: 'Low', color: 'bg-green-50 text-green-700 border-green-300', icon: '🟢' },
+                  { value: 'Medium', color: 'bg-orange-50 text-orange-700 border-orange-300', icon: '🟠' },
+                  { value: 'High', color: 'bg-red-50 text-red-700 border-red-300', icon: '🔴' }
+                ].map(s => (
+                  <button
+                    key={s.value}
+                    onClick={() => setFilters((f) => ({ ...f, severity: s.value }))}
+                    className={`p-2 rounded-lg border-2 text-xs font-semibold transition-all ${
+                      filters.severity === s.value
+                        ? `${s.color} shadow-md scale-105`
+                        : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <span className="text-base">{s.icon}</span>
+                    <div>{s.value}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Verified Only Toggle */}
+            <div className="mb-4 bg-blue-50 rounded-lg p-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  id="verified"
+                  type="checkbox"
+                  checked={filters.verifiedOnly}
+                  onChange={(e) => setFilters((f) => ({ ...f, verifiedOnly: e.target.checked }))}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <VerifiedIcon className="text-blue-600" style={{ fontSize: 18 }} />
+                <span className="text-sm font-semibold text-blue-900">Verified Only</span>
+              </label>
+            </div>
+
+            {/* Distance Filter */}
+            <div className="mb-4">
+              <label className="flex items-center gap-1 text-sm font-semibold text-gray-700 mb-2">
+                <StraightenIcon style={{ fontSize: 18 }} />
+                Max Distance
+              </label>
+              <div className="relative">
+                <input
+                  type="range"
+                  min={100}
+                  max={5000}
+                  step={100}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                  value={filters.maxDistance}
+                  onChange={(e) => setFilters((f) => ({ ...f, maxDistance: Number(e.target.value) }))}
+                />
+                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                  <span>100m</span>
+                  <span className="font-bold text-blue-600">{filters.maxDistance}m</span>
+                  <span>5km</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Search Filter */}
+            <div className="mb-4">
+              <label className="flex items-center gap-1 text-sm font-semibold text-gray-700 mb-2">
+                <SearchIcon style={{ fontSize: 18 }} />
+                Search
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  className="w-full border-2 border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all outline-none"
+                  value={filters.search}
+                  onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
+                  placeholder="Search description..."
+                />
+                <SearchIcon className="absolute left-2.5 top-2.5 text-gray-400" style={{ fontSize: 18 }} />
+              </div>
+            </div>
+
+            {/* Locate Me Button */}
+            <button 
+              onClick={goToMyLocation} 
+              className="w-full py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 flex items-center justify-center gap-2"
             >
-              {['All','Potholes','Accident','Floods','Broken Roads','Landslides','Road Closures','Police Checkpoints','Heavy Traffic Jam','Fire on Roadside','Animal Crossing'].map(t => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm">Severity</label>
-            <select
-              className="w-full border rounded p-2"
-              value={filters.severity}
-              onChange={(e) => setFilters((f) => ({ ...f, severity: e.target.value }))}
-            >
-              {['All','Low','Medium','High'].map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              id="verified"
-              type="checkbox"
-              checked={filters.verifiedOnly}
-              onChange={(e) => setFilters((f) => ({ ...f, verifiedOnly: e.target.checked }))}
-            />
-            <label htmlFor="verified">Verified only</label>
-          </div>
-          <div>
-            <label className="block text-sm">Distance (m)</label>
-            <input
-              type="number"
-              min={0}
-              className="w-full border rounded p-2"
-              value={filters.maxDistance}
-              onChange={(e) => setFilters((f) => ({ ...f, maxDistance: Number(e.target.value || 0) }))}
-            />
-          </div>
-          <div>
-            <label className="block text-sm">Search (description)</label>
-            <input
-              type="text"
-              className="w-full border rounded p-2"
-              value={filters.search}
-              onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
-              placeholder="e.g., near bridge"
-            />
+              <MyLocationIcon style={{ fontSize: 20 }} />
+              Locate Me
+            </button>
+            {geoError && <p className="text-xs text-red-600 mt-2 text-center">{geoError}</p>}
           </div>
         </div>
 
-        <div className="md:col-span-4">
-          <div className="flex items-center justify-end gap-3 mb-2">
-            {geoError && <span className="text-sm text-red-600">{geoError}</span>}
-            <button onClick={goToMyLocation} className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
-              Locate Me
-            </button>
-          </div>
-          <div className="w-full">
+        {/* Map Section */}
+        <div className="lg:col-span-5">
+          <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100"
+            style={{ height: 'calc(100vh - 100px)' }}
+          >
             <MapContainer
               center={center}
               zoom={13}
-              style={{ height: 'calc(100vh - 64px)', width: '100%' }}
-              whenCreated={setMap}
+              style={{ height: '100%', width: '100%' }}
             >
+              <MapController onMapReady={setMap} />
               <TileLayer
                 attribution='&copy; OpenStreetMap contributors'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
