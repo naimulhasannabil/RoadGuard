@@ -19,7 +19,9 @@ import BarChartIcon from '@mui/icons-material/BarChart'
 import SaveIcon from '@mui/icons-material/Save'
 
 export default function AdminDashboard() {
-  const { alerts, setAlerts } = useAlerts()
+  const ctx = useAlerts()
+const alerts = ctx?.alerts || []
+const setAlerts = ctx?.setAlerts
   const [filter, setFilter] = useState('active')
   const [currentPage, setCurrentPage] = useState(1)
   const [editModalOpen, setEditModalOpen] = useState(false)
@@ -28,17 +30,39 @@ export default function AdminDashboard() {
   const [editedSeverity, setEditedSeverity] = useState('Low')
   const [editedType, setEditedType] = useState('')
   
-  // User Management State
-  const [users, setUsers] = useState([
-    { id: 1, name: 'John Doe', email: 'john@example.com', reports: 15, spamCount: 0, banned: false },
-    { id: 2, name: 'Jane Smith', email: 'jane@example.com', reports: 8, spamCount: 3, banned: false },
-    { id: 3, name: 'Bob Johnson', email: 'bob@example.com', reports: 25, spamCount: 1, banned: false },
-  ])
+  // User Management (computed from alerts)
+  const users = useMemo(() => {
+    const map = new Map()
+    ;(alerts || []).forEach(a => {
+      const name = a.contributor || 'Anonymous'
+      const email = a.contributorEmail || 'N/A'
+      const m = map.get(name) || { id: name, name, email, reports: 0, spamCount: 0 }
+      m.reports += 1
+      const up = a.votesUp || 0
+      const down = a.votesDown || 0
+      if (down > up) m.spamCount += 1
+      map.set(name, m)
+    })
+    return Array.from(map.values())
+  }, [alerts])
   const [banModalOpen, setBanModalOpen] = useState(false)
   const [selectedUser, setSelectedUser] = useState(null)
   
   // Settings State
-  const [ttlSettings, setTtlSettings] = useState({ Low: 30, Medium: 60, High: 120 })
+  const [ttlSettings, setTtlSettings] = useState(() => ({
+  Low: ctx?.severityTtl?.Low ?? 30,
+  Medium: ctx?.severityTtl?.Medium ?? 60,
+  High: ctx?.severityTtl?.High ?? 120
+}))
+useEffect(() => {
+  if (ctx?.severityTtl) {
+    setTtlSettings({
+      Low: ctx.severityTtl.Low ?? 30,
+      Medium: ctx.severityTtl.Medium ?? 60,
+      High: ctx.severityTtl.High ?? 120
+    })
+  }
+}, [ctx?.severityTtl])
   const [settingsChanged, setSettingsChanged] = useState(false)
 
   // Statistics
@@ -66,7 +90,9 @@ export default function AdminDashboard() {
   // Handle remove alert
   const handleRemoveAlert = (id) => {
     if (window.confirm('Are you sure you want to delete this alert?')) {
-      setAlerts(prev => prev.filter(a => a.id !== id))
+      if (setAlerts) {
+        setAlerts(prev => prev.filter(a => a.id !== id))
+      }
     }
   }
 
@@ -80,7 +106,7 @@ export default function AdminDashboard() {
   }
 
   const saveEdit = () => {
-    if (selectedAlert) {
+    if (selectedAlert && setAlerts) {
       setAlerts(prev => prev.map(a => 
         a.id === selectedAlert.id 
           ? { ...a, description: editedDescription, severity: editedSeverity, type: editedType }
@@ -92,16 +118,20 @@ export default function AdminDashboard() {
 
   // Toggle verification
   const toggleVerification = (id) => {
-    setAlerts(prev => prev.map(a => 
-      a.id === id ? { ...a, verified: !a.verified, manuallyVerified: true } : a
-    ))
+    if (setAlerts) {
+      setAlerts(prev => prev.map(a => 
+        a.id === id ? { ...a, verified: !a.verified, manuallyVerified: true } : a
+      ))
+    }
   }
 
   // Toggle expiration
   const toggleExpiration = (id) => {
-    setAlerts(prev => prev.map(a => 
-      a.id === id ? { ...a, expired: !a.expired } : a
-    ))
+    if (setAlerts) {
+      setAlerts(prev => prev.map(a => 
+        a.id === id ? { ...a, expired: !a.expired } : a
+      ))
+    }
   }
 
   // User Management Functions
@@ -111,18 +141,14 @@ export default function AdminDashboard() {
   }
 
   const confirmBan = () => {
-    if (selectedUser) {
-      setUsers(prev => prev.map(u => 
-        u.id === selectedUser.id ? { ...u, banned: true } : u
-      ))
+    if (selectedUser && setAlerts) {
+      setAlerts(prev => prev.filter(a => (a.contributor || 'Anonymous') !== selectedUser.name))
     }
     setBanModalOpen(false)
   }
 
   const unbanUser = (userId) => {
-    setUsers(prev => prev.map(u => 
-      u.id === userId ? { ...u, banned: false } : u
-    ))
+    // No-op: users are computed from alerts; unban requires backend logic
   }
 
   // Settings Functions
@@ -132,8 +158,11 @@ export default function AdminDashboard() {
   }
 
   const saveTtlSettings = () => {
-    // TODO: Save to backend
-    console.log('TTL settings saved:', ttlSettings)
+    if (ctx?.setSeverityTtl) {
+      ctx.setSeverityTtl(ttlSettings)
+    } else {
+      console.log('TTL settings saved:', ttlSettings)
+    }
     alert('✅ Settings saved successfully!')
     setSettingsChanged(false)
   }
