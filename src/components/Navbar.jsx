@@ -3,6 +3,7 @@ import MapIcon from '@mui/icons-material/Map'
 import ReportProblemIcon from '@mui/icons-material/ReportProblem'
 import AccountCircleIcon from '@mui/icons-material/AccountCircle'
 import SecurityIcon from '@mui/icons-material/Security'
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings'
 
 export default function Navbar() {
   return (
@@ -59,6 +60,21 @@ export default function Navbar() {
             >
               <AccountCircleIcon style={{ fontSize: 20 }} />
               <span className="hidden sm:inline">Profile</span>
+            </NavLink>
+            
+            {/* Temporary Admin Link for Testing */}
+            <NavLink
+              to="/admin"
+              className={({ isActive }) =>
+                `flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
+                  isActive
+                    ? 'bg-white text-red-600 shadow-md'
+                    : 'text-white hover:bg-white/20'
+                }`
+              }
+            >
+              <AdminPanelSettingsIcon style={{ fontSize: 20 }} />
+              <span className="hidden sm:inline">Admin</span>
             </NavLink>
           </div>
         </div>

@@ -36,6 +36,8 @@ export function AlertsProvider({ children }) {
           const expiresAt = new Date(a.timestamp).getTime() + ttlMinutes * 60_000
           return expiresAt > now
         }).map((a) => {
+          // Don't override manually verified alerts
+          if (a.manuallyVerified) return a
           const score = (a.votesUp || 0) - (a.votesDown || 0)
           return { ...a, verified: score >= 3 }
         })
@@ -104,6 +106,7 @@ export function AlertsProvider({ children }) {
 
   const value = {
     alerts,
+    setAlerts,
     addAlert,
     voteAlert,
     userLocation,
