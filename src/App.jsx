@@ -20,6 +20,7 @@ function App() {
         <Route path="/" element={<MapPage />} />
         <Route path="/report" element={<ReportAlert />} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="*" element={<Navigate to="/" replace />} />
