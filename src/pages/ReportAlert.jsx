@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAlerts } from '../context/AlertsContext'
 import WarningIcon from '@mui/icons-material/Warning'
@@ -6,6 +6,13 @@ import LocationOnIcon from '@mui/icons-material/LocationOn'
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera'
 import SendIcon from '@mui/icons-material/Send'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import MicIcon from '@mui/icons-material/Mic'
+import MicOffIcon from '@mui/icons-material/MicOff'
+import DeleteIcon from '@mui/icons-material/Delete'
+import GraphicEqIcon from '@mui/icons-material/GraphicEq'
+import PlayArrowIcon from '@mui/icons-material/PlayArrow'
+import PauseIcon from '@mui/icons-material/Pause'
+import AudiotrackIcon from '@mui/icons-material/Audiotrack'
 
 const HAZARD_TYPES = [
   { value: 'Potholes', icon: '🕳️', color: 'from-gray-500 to-gray-600' },
@@ -34,9 +41,332 @@ export default function ReportAlert() {
     description: '',
     photos: [],
     lat: null,
-    lng: null
+    lng: null,
+    voiceNote: null
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
+  
+  // Voice Recording States
+  const [isRecording, setIsRecording] = useState(false)
+  const [voiceTranscript, setVoiceTranscript] = useState('')
+  const [isVoiceSupported, setIsVoiceSupported] = useState(true)
+  const [voiceWaveform, setVoiceWaveform] = useState([])
+  const [audioBlob, setAudioBlob] = useState(null)
+  const [audioUrl, setAudioUrl] = useState(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [recordingDuration, setRecordingDuration] = useState(0)
+  const [micError, setMicError] = useState(null)
+  const [audioDevices, setAudioDevices] = useState([])
+  const [selectedDeviceId, setSelectedDeviceId] = useState('')
+  const recognitionRef = useRef(null)
+  const mediaRecorderRef = useRef(null)
+  const audioChunksRef = useRef([])
+  const audioRef = useRef(null)
+  const recordingTimerRef = useRef(null)
+  const streamRef = useRef(null)
+  const analyserRef = useRef(null)
+  
+  // Get available audio devices
+  useEffect(() => {
+    const getDevices = async () => {
+      try {
+        // Need to request permission first to get device labels
+        await navigator.mediaDevices.getUserMedia({ audio: true })
+          .then(stream => stream.getTracks().forEach(track => track.stop()))
+        
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        const audioInputs = devices.filter(d => d.kind === 'audioinput')
+        console.log('Available microphones:', audioInputs)
+        setAudioDevices(audioInputs)
+        
+        // Select default device
+        if (audioInputs.length > 0 && !selectedDeviceId) {
+          setSelectedDeviceId(audioInputs[0].deviceId)
+        }
+      } catch (err) {
+        console.error('Error getting devices:', err)
+      }
+    }
+    getDevices()
+  }, [])
+  
+// Check for Speech Recognition support
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (SpeechRecognition) {
+      setIsVoiceSupported(true)
+      recognitionRef.current = new SpeechRecognition()
+      recognitionRef.current.continuous = true
+      recognitionRef.current.interimResults = true
+      recognitionRef.current.lang = 'en-US'
+      
+      recognitionRef.current.onresult = (event) => {
+        let finalTranscript = ''
+        let interimTranscript = ''
+        
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript + ' '
+          } else {
+            interimTranscript += transcript
+          }
+        }
+        
+        if (finalTranscript) {
+          setVoiceTranscript(prev => prev + finalTranscript)
+          setForm(f => ({ ...f, description: f.description + finalTranscript }))
+        }
+      }
+      
+      recognitionRef.current.onerror = (event) => {
+        console.error('Speech recognition error:', event.error)
+        setIsRecording(false)
+      }
+      
+      recognitionRef.current.onend = () => {
+        // Don't set isRecording to false here, let toggleVoiceRecording handle it
+      }
+    }
+    
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop()
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop()
+      }
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current)
+      }
+    }
+  }, [])
+  
+  // Simulate voice waveform animation
+  useEffect(() => {
+    let interval
+    if (isRecording) {
+      interval = setInterval(() => {
+        setVoiceWaveform(Array.from({ length: 12 }, () => Math.random() * 100))
+      }, 100)
+    } else {
+      setVoiceWaveform([])
+    }
+    return () => clearInterval(interval)
+  }, [isRecording])
+
+  const toggleVoiceRecording = async () => {
+    setMicError(null)
+    
+    if (isRecording) {
+      // === STOP RECORDING ===
+      console.log('Stopping recording...')
+      
+      // Stop speech recognition
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop() } catch (e) {}
+      }
+      
+      // Stop timer
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current)
+        recordingTimerRef.current = null
+      }
+      
+      // Stop MediaRecorder
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop()
+      }
+      
+      setIsRecording(false)
+      
+    } else {
+      // === START RECORDING ===
+      console.log('Starting recording...')
+      
+      // Reset states
+      setVoiceTranscript('')
+      setAudioBlob(null)
+      setAudioUrl(null)
+      setRecordingDuration(0)
+      audioChunksRef.current = []
+      
+      try {
+        // Get microphone stream with selected device
+        console.log('Requesting microphone access for device:', selectedDeviceId)
+        const constraints = {
+          audio: {
+            deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: true,
+            channelCount: 1,
+            sampleRate: 48000
+          }
+        }
+        console.log('Audio constraints:', constraints)
+        
+        const stream = await navigator.mediaDevices.getUserMedia(constraints)
+        
+        streamRef.current = stream
+        
+        const audioTracks = stream.getAudioTracks()
+        console.log('Got audio tracks:', audioTracks.length)
+        
+        if (audioTracks.length === 0) {
+          setMicError('No microphone found')
+          return
+        }
+        
+        // Log track settings
+        const settings = audioTracks[0].getSettings()
+        console.log('Track settings:', settings)
+        
+        // Create audio context to visualize and verify audio input
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)()
+        const source = audioContext.createMediaStreamSource(stream)
+        analyserRef.current = audioContext.createAnalyser()
+        analyserRef.current.fftSize = 256
+        source.connect(analyserRef.current)
+        
+        // Create MediaRecorder
+        const options = {}
+        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+          options.mimeType = 'audio/webm;codecs=opus'
+        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+          options.mimeType = 'audio/webm'
+        }
+        
+        console.log('Creating MediaRecorder with options:', options)
+        const recorder = new MediaRecorder(stream, options)
+        mediaRecorderRef.current = recorder
+        
+        recorder.ondataavailable = (e) => {
+          console.log('Chunk received:', e.data.size, 'bytes')
+          if (e.data && e.data.size > 0) {
+            audioChunksRef.current.push(e.data)
+          }
+        }
+        
+        recorder.onstop = () => {
+          console.log('MediaRecorder stopped. Total chunks:', audioChunksRef.current.length)
+          
+          if (audioChunksRef.current.length === 0) {
+            setMicError('No audio data recorded')
+            return
+          }
+          
+          const totalSize = audioChunksRef.current.reduce((acc, chunk) => acc + chunk.size, 0)
+          console.log('Total audio size:', totalSize, 'bytes')
+          
+          const mimeType = recorder.mimeType || 'audio/webm'
+          const blob = new Blob(audioChunksRef.current, { type: mimeType })
+          console.log('Final blob:', blob.size, 'bytes, type:', blob.type)
+          
+          const url = URL.createObjectURL(blob)
+          setAudioBlob(blob)
+          setAudioUrl(url)
+          setForm(f => ({ ...f, voiceNote: blob }))
+          
+          // Stop stream tracks
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop())
+          }
+          
+          // Close audio context
+          if (audioContext) {
+            audioContext.close()
+          }
+        }
+        
+        recorder.onerror = (e) => {
+          console.error('MediaRecorder error:', e)
+          setMicError('Recording error: ' + e.error?.message || 'Unknown error')
+        }
+        
+        // Start recording with 500ms timeslice
+        recorder.start(500)
+        console.log('MediaRecorder started, state:', recorder.state)
+        
+        // Start real waveform visualization
+        const updateWaveform = () => {
+          if (analyserRef.current && isRecording) {
+            const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount)
+            analyserRef.current.getByteFrequencyData(dataArray)
+            const waveform = Array.from(dataArray.slice(0, 12)).map(v => (v / 255) * 100)
+            setVoiceWaveform(waveform)
+          }
+        }
+        
+        // Update waveform every 100ms
+        const waveformInterval = setInterval(updateWaveform, 100)
+        
+        // Start speech recognition
+        if (recognitionRef.current) {
+          try { recognitionRef.current.start() } catch (e) { console.log('Speech recognition:', e) }
+        }
+        
+        // Start duration timer
+        recordingTimerRef.current = setInterval(() => {
+          setRecordingDuration(prev => prev + 1)
+        }, 1000)
+        
+        // Store waveform interval to clear later
+        const originalStop = recorder.onstop
+        recorder.onstop = (e) => {
+          clearInterval(waveformInterval)
+          setVoiceWaveform([])
+          originalStop(e)
+        }
+        
+        setIsRecording(true)
+        
+      } catch (error) {
+        console.error('Microphone access error:', error)
+        if (error.name === 'NotAllowedError') {
+          setMicError('Microphone access denied. Please allow microphone permission.')
+        } else if (error.name === 'NotFoundError') {
+          setMicError('No microphone found. Please connect a microphone.')
+        } else {
+          setMicError('Error: ' + error.message)
+        }
+      }
+    }
+  }
+  
+  const formatDuration = (seconds) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+  
+  const togglePlayback = async () => {
+    if (audioRef.current) {
+      try {
+        if (isPlaying) {
+          audioRef.current.pause()
+          setIsPlaying(false)
+        } else {
+          audioRef.current.volume = 1.0
+          await audioRef.current.play()
+          setIsPlaying(true)
+        }
+      } catch (error) {
+        console.error('Playback error:', error)
+      }
+    }
+  }
+  
+  const removeVoiceRecording = () => {
+    if (audioUrl) {
+      URL.revokeObjectURL(audioUrl)
+    }
+    setAudioBlob(null)
+    setAudioUrl(null)
+    setVoiceTranscript('')
+    setRecordingDuration(0)
+    setForm(f => ({ ...f, voiceNote: null }))
+  }
 
   useEffect(() => {
     if ('geolocation' in navigator) {
@@ -69,6 +399,8 @@ export default function ReportAlert() {
         lat: form.lat,
         lng: form.lng,
         contributor: 'You',
+        alternateRoutes: form.alternateRoutes,
+        voiceNote: form.voiceNote
       })
       setIsSubmitting(false)
       navigate('/')
@@ -92,7 +424,7 @@ export default function ReportAlert() {
         <form onSubmit={onSubmit} className="space-y-6">
           {/* Hazard Type Selection */}
           <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
-            <label className="block text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <label className="flex items-center gap-2 text-lg font-bold text-gray-800 mb-4">
               <WarningIcon className="text-orange-500" />
               Hazard Type
             </label>
@@ -157,9 +489,197 @@ export default function ReportAlert() {
             />
           </div>
 
-          {/* Photos Upload */}
+          {/* Voice Reporting Feature */}
+          <div className="bg-gradient-to-br from-purple-50 via-white to-indigo-50 rounded-2xl shadow-xl p-6 border border-purple-100">
+            <div className="flex items-center justify-between mb-4">
+              <label className="flex items-center gap-2 text-lg font-bold text-gray-800">
+                <MicIcon className="text-purple-600" />
+                Voice Reporting
+                <span className="text-xs font-normal bg-purple-100 text-purple-700 px-2 py-1 rounded-full ml-2">
+                  NEW
+                </span>
+              </label>
+            </div>
+            
+            <p className="text-gray-600 text-sm mb-4">
+              Record your voice to describe the hazard. Your audio will be saved and the text will be automatically transcribed.
+            </p>
+            
+            {/* Microphone Selector */}
+            <div className="mb-4 p-4 bg-white rounded-xl border-2 border-purple-100">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                🎤 Select Microphone:
+              </label>
+              <select
+                value={selectedDeviceId}
+                onChange={(e) => setSelectedDeviceId(e.target.value)}
+                disabled={isRecording}
+                className="w-full border-2 border-gray-200 rounded-lg p-2.5 text-sm focus:border-purple-500 focus:ring-2 focus:ring-purple-100 transition-all outline-none bg-white disabled:bg-gray-100"
+              >
+                {audioDevices.length === 0 ? (
+                  <option value="">No microphones found</option>
+                ) : (
+                  audioDevices.map((device, idx) => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      {device.label || `Microphone ${idx + 1}`}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+            
+            {/* Error Message */}
+            {micError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                ⚠️ {micError}
+              </div>
+            )}
+            
+            {/* Recording Controls */}
+            {!audioUrl ? (
+              <div className="flex flex-col sm:flex-row items-center gap-4">
+                {/* Voice Record Button */}
+                <button
+                  type="button"
+                  onClick={toggleVoiceRecording}
+                  className={`relative flex items-center justify-center w-20 h-20 rounded-full transition-all duration-300 transform hover:scale-105 ${
+                    isRecording
+                      ? 'bg-gradient-to-br from-red-500 to-red-600 shadow-lg shadow-red-200'
+                      : 'bg-gradient-to-br from-purple-500 to-indigo-600 shadow-lg shadow-purple-200 hover:shadow-xl'
+                  }`}
+                >
+                  {isRecording ? (
+                    <MicOffIcon className="text-white" style={{ fontSize: 32 }} />
+                  ) : (
+                    <MicIcon className="text-white" style={{ fontSize: 32 }} />
+                  )}
+                  {isRecording && (
+                    <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500"></span>
+                    </span>
+                  )}
+                </button>
+                
+                {/* Voice Waveform Visualization */}
+                <div className="flex-1 w-full">
+                  {isRecording ? (
+                    <div className="bg-white rounded-xl p-4 border-2 border-red-200">
+                      <div className="flex items-center gap-1 h-12">
+                        {voiceWaveform.map((height, i) => (
+                          <div
+                            key={i}
+                            className="flex-1 bg-gradient-to-t from-red-500 to-orange-500 rounded-full transition-all duration-100"
+                            style={{ height: `${Math.max(8, height)}%` }}
+                          />
+                        ))}
+                      </div>
+                      <div className="flex items-center justify-between mt-2">
+                        <div className="flex items-center gap-2 text-red-500 text-sm font-medium">
+                          <GraphicEqIcon style={{ fontSize: 16 }} className="animate-pulse" />
+                          Recording...
+                        </div>
+                        <div className="text-red-600 font-mono text-sm font-bold">
+                          {formatDuration(recordingDuration)}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-xl p-4 border-2 border-dashed border-gray-200 text-center">
+                      <p className="text-gray-500 text-sm">
+                        Click the microphone to start voice recording
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              /* Recorded Audio Display */
+              <div className="bg-white rounded-xl p-5 border-2 border-purple-200">
+                <div className="flex items-center gap-4">
+                  {/* Audio Icon */}
+                  <div className="flex-shrink-0 w-14 h-14 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+                    <AudiotrackIcon className="text-white" style={{ fontSize: 28 }} />
+                  </div>
+                  
+                  {/* Audio Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-bold text-gray-800">Voice Recording</span>
+                      <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <CheckCircleIcon style={{ fontSize: 12 }} />
+                        Saved
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-500">
+                      Duration: {formatDuration(recordingDuration)} • Audio file attached
+                    </div>
+                  </div>
+                  
+                  {/* Playback Controls */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={togglePlayback}
+                      className="w-12 h-12 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-full flex items-center justify-center text-white shadow-md hover:shadow-lg transition-all transform hover:scale-105"
+                    >
+                      {isPlaying ? (
+                        <PauseIcon style={{ fontSize: 24 }} />
+                      ) : (
+                        <PlayArrowIcon style={{ fontSize: 24 }} />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={removeVoiceRecording}
+                      className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center text-red-600 hover:bg-red-200 transition-all"
+                    >
+                      <DeleteIcon style={{ fontSize: 20 }} />
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Audio Player */}
+                <div className="mt-3">
+                  <audio
+                    ref={audioRef}
+                    src={audioUrl}
+                    controls
+                    preload="auto"
+                    onEnded={() => setIsPlaying(false)}
+                    className="w-full h-12"
+                    style={{ minHeight: '48px' }}
+                  />
+                </div>
+                
+                {/* Audio Waveform Visual (Static) */}
+                <div className="mt-4 flex items-center gap-0.5 h-8">
+                  {Array.from({ length: 50 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="flex-1 bg-gradient-to-t from-purple-400 to-indigo-400 rounded-full"
+                      style={{ height: `${20 + Math.sin(i * 0.5) * 15 + Math.random() * 30}%` }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Voice Transcript */}
+            {voiceTranscript && (
+              <div className="mt-4 p-4 bg-white rounded-xl border-2 border-purple-200">
+                <div className="flex items-center gap-2 text-sm font-semibold text-purple-700 mb-2">
+                  <CheckCircleIcon style={{ fontSize: 16 }} />
+                  Voice Transcript (Auto-generated):
+                </div>
+                <p className="text-gray-700 text-sm italic">"{voiceTranscript.trim()}"</p>
+              </div>
+            )}
+          </div>
+
+{/* Photos Upload */}
           <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
-            <label className="block text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
+            <label className="flex items-center gap-2 text-lg font-bold text-gray-800 mb-3">
               <PhotoCameraIcon className="text-orange-500" />
               Photos (Optional)
             </label>
