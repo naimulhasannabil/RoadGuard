@@ -6,6 +6,10 @@ import MyLocationIcon from '@mui/icons-material/MyLocation'
 import SearchIcon from '@mui/icons-material/Search'
 import VerifiedIcon from '@mui/icons-material/Verified'
 import StraightenIcon from '@mui/icons-material/Straighten'
+import PlayArrowIcon from '@mui/icons-material/PlayArrow'
+import PauseIcon from '@mui/icons-material/Pause'
+import VolumeUpIcon from '@mui/icons-material/VolumeUp'
+import AltRouteIcon from '@mui/icons-material/AltRoute'
 
 const severityColor = {
   Low: '#2ecc71',
@@ -34,6 +38,101 @@ function MapController({ onMapReady }) {
     }
   }, [map, onMapReady])
   return null
+}
+
+// Voice Player Component for Alert Popups
+function VoicePlayer({ voiceNote }) {
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [error, setError] = useState(null)
+  const audioRef = useRef(null)
+  
+  const togglePlay = async () => {
+    if (audioRef.current) {
+      try {
+        if (isPlaying) {
+          audioRef.current.pause()
+          setIsPlaying(false)
+        } else {
+          setError(null)
+          audioRef.current.volume = 1.0
+          await audioRef.current.play()
+          setIsPlaying(true)
+        }
+      } catch (err) {
+        console.error('Audio playback error:', err)
+        setError('Could not play audio')
+      }
+    }
+  }
+  
+  if (!voiceNote) return null
+  
+  return (
+    <div className="mt-2 p-2 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg border border-purple-200">
+      <div className="flex items-center gap-2">
+        <button
+          onClick={togglePlay}
+          className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+            isPlaying 
+              ? 'bg-red-500 hover:bg-red-600' 
+              : 'bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600'
+          } text-white shadow-md`}
+        >
+          {isPlaying ? (
+            <PauseIcon style={{ fontSize: 16 }} />
+          ) : (
+            <PlayArrowIcon style={{ fontSize: 16 }} />
+          )}
+        </button>
+        <div className="flex-1">
+          <div className="flex items-center gap-1 text-xs font-semibold text-purple-700">
+            <VolumeUpIcon style={{ fontSize: 14 }} />
+            Voice Report
+          </div>
+          <div className="text-xs text-gray-500">
+            {error ? <span className="text-red-500">{error}</span> : (isPlaying ? 'Playing...' : 'Click to listen')}
+          </div>
+        </div>
+      </div>
+      <audio
+        ref={audioRef}
+        src={voiceNote}
+        preload="auto"
+        onEnded={() => setIsPlaying(false)}
+        onError={(e) => {
+          console.error('Audio error:', e)
+          setError('Audio failed to load')
+        }}
+      />
+    </div>
+  )
+}
+
+// Alternate Routes Display Component
+function AlternateRoutesDisplay({ routes }) {
+  if (!routes || routes.length === 0) return null
+  
+  return (
+    <div className="mt-2 p-2 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-lg border border-emerald-200">
+      <div className="flex items-center gap-1 text-xs font-semibold text-emerald-700 mb-2">
+        <AltRouteIcon style={{ fontSize: 14 }} />
+        Alternate Routes Suggested
+      </div>
+      <div className="space-y-1.5">
+        {routes.map((route, idx) => (
+          <div key={route.id || idx} className="text-xs bg-white rounded p-1.5 border border-emerald-100">
+            <div className="font-medium text-gray-800">
+              {route.from} → {route.to}
+            </div>
+            <div className="text-emerald-600">Via: {route.alternateVia}</div>
+            {route.estimatedTime && (
+              <div className="text-gray-500">Time: {route.estimatedTime}</div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 export default function MapPage() {
@@ -269,7 +368,7 @@ export default function MapPage() {
                   pathOptions={{ color: severityColor[a.severity] || '#3498db', fillColor: severityColor[a.severity] || '#3498db', fillOpacity: 0.6 }}
                 >
                   <Popup>
-                    <div className="space-y-2">
+                    <div className="space-y-2 min-w-[200px]">
                       <div className="font-semibold">{a.type} <span className="ml-2 text-xs px-2 py-0.5 rounded bg-gray-100">{a.severity}</span></div>
                       <div className="text-sm text-gray-600">Contributor: {a.contributor}</div>
                       <div className="text-sm">Timestamp: {new Date(a.timestamp).toLocaleString()}</div>
@@ -277,6 +376,13 @@ export default function MapPage() {
                         <div className="text-sm">Distance: {haversineMeters(userLocation.lat, userLocation.lng, a.lat, a.lng).toFixed(0)} m</div>
                       )}
                       {a.description && <div className="text-sm">{a.description}</div>}
+                      
+                      {/* Voice Recording Player */}
+                      {a.voiceNote && <VoicePlayer voiceNote={a.voiceNote} />}
+                      
+                      {/* Alternate Routes */}
+                      {a.alternateRoutes && <AlternateRoutesDisplay routes={a.alternateRoutes} />}
+                      
                       {a.photos?.length ? (
                         <div className="flex gap-2 flex-wrap">
                           {a.photos.map((p) => (

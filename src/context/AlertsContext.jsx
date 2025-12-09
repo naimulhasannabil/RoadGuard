@@ -72,12 +72,21 @@ export function AlertsProvider({ children }) {
     }
   }
 
-  const addAlert = ({ type, severity, description, photos, lat, lng, contributor = 'You' }) => {
+  const addAlert = ({ type, severity, description, photos, lat, lng, contributor = 'You', voiceNote = null, alternateRoutes = [] }) => {
     const id = ++lastAlertId.current
     const photoObjs = (photos || []).map((f) => ({
       name: f.name,
       url: URL.createObjectURL(f),
     }))
+    
+    // Convert voiceNote Blob to URL if it exists
+    let voiceNoteUrl = null
+    if (voiceNote && voiceNote instanceof Blob) {
+      voiceNoteUrl = URL.createObjectURL(voiceNote)
+    } else if (typeof voiceNote === 'string') {
+      voiceNoteUrl = voiceNote
+    }
+    
     const alert = {
       id,
       type,
@@ -91,6 +100,8 @@ export function AlertsProvider({ children }) {
       votesUp: 0,
       votesDown: 0,
       verified: false,
+      voiceNote: voiceNoteUrl,
+      alternateRoutes: alternateRoutes || [],
     }
     setAlerts((prev) => [alert, ...prev])
     notifyIfNearby(alert)
