@@ -6,10 +6,11 @@ import Profile from './pages/Profile'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 import AdminDashboard from './pages/AdminDashboard'
+import Emergency from './pages/Emergency'
 
 function App() {
   const location = useLocation()
-  const hideNavbar = ['/login', '/signup'].includes(location.pathname)
+  const hideNavbar = [ '/login', '/signup'].includes(location.pathname)
 
   console.log('App rendering, location:', location.pathname)
 
@@ -19,6 +20,7 @@ function App() {
       <Routes>
         <Route path="/" element={<MapPage />} />
         <Route path="/report" element={<ReportAlert />} />
+        <Route path="/emergency" element={<Emergency />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/login" element={<Login />} />
