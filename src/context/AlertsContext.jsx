@@ -28,6 +28,27 @@ export function AlertsProvider({ children }) {
   const lastAlertId = useRef(0)
 
   const [severityTtl, setSeverityTtl] = useState(DEFAULT_TTL_MINUTES)
+  
+  // Store comments by alert ID - persists across page navigation
+  const [alertComments, setAlertComments] = useState({})
+  
+  const getCommentsForAlert = (alertId) => {
+    return alertComments[alertId] || [
+      // Default placeholder comments for demo
+      { id: 1, author: 'Traffic Officer', text: 'Confirmed. Crew dispatched to location.', time: '5 mins ago', isOfficial: true },
+      { id: 2, author: 'Local Driver', text: 'Still blocked as of now. Take the alternate route via Ring Road.', time: '12 mins ago', isOfficial: false },
+    ]
+  }
+  
+  const addCommentToAlert = (alertId, comment) => {
+    setAlertComments(prev => {
+      const existingComments = prev[alertId] || getCommentsForAlert(alertId)
+      return {
+        ...prev,
+        [alertId]: [comment, ...existingComments]
+      }
+    })
+  }
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -145,6 +166,10 @@ export function AlertsProvider({ children }) {
     setUserLocation,
     nearbyRadiusMeters,
     setNearbyRadiusMeters,
+    // Comments
+    alertComments,
+    getCommentsForAlert,
+    addCommentToAlert,
   }
 
   return <AlertsContext.Provider value={value}>{children}</AlertsContext.Provider>
