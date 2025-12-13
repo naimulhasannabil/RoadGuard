@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react'
 
 const AlertsContext = createContext(null)
 
-const SEVERITY_TTL_MINUTES = {
+const DEFAULT_TTL_MINUTES = {
   Low: 30,
   Medium: 60,
   High: 120,
@@ -27,22 +27,49 @@ export function AlertsProvider({ children }) {
   const [nearbyRadiusMeters, setNearbyRadiusMeters] = useState(500)
   const lastAlertId = useRef(0)
 
+  const [severityTtl, setSeverityTtl] = useState(DEFAULT_TTL_MINUTES)
+  
+  // Store comments by alert ID - persists across page navigation
+  const [alertComments, setAlertComments] = useState({})
+  
+  const getCommentsForAlert = (alertId) => {
+    return alertComments[alertId] || [
+      // Default placeholder comments for demo
+      { id: 1, author: 'Traffic Officer', text: 'Confirmed. Crew dispatched to location.', time: '5 mins ago', isOfficial: true },
+      { id: 2, author: 'Local Driver', text: 'Still blocked as of now. Take the alternate route via Ring Road.', time: '12 mins ago', isOfficial: false },
+    ]
+  }
+  
+  const addCommentToAlert = (alertId, comment) => {
+    setAlertComments(prev => {
+      const existingComments = prev[alertId] || getCommentsForAlert(alertId)
+      return {
+        ...prev,
+        [alertId]: [comment, ...existingComments]
+      }
+    })
+  }
+
   useEffect(() => {
     const interval = setInterval(() => {
       setAlerts((prev) => {
         const now = Date.now()
-        return prev.filter((a) => {
-          const ttlMinutes = SEVERITY_TTL_MINUTES[a.severity] ?? 60
+        return prev.map((a) => {
+          const ttlMinutes = severityTtl[a.severity] ?? 60
           const expiresAt = new Date(a.timestamp).getTime() + ttlMinutes * 60_000
-          return expiresAt > now
-        }).map((a) => {
+          const expired = expiresAt <= now
+          // Don't override manually verified alerts
+          if (a.manuallyVerified) {
+            return { ...a, expired }
+          }
           const score = (a.votesUp || 0) - (a.votesDown || 0)
-          return { ...a, verified: score >= 3 }
+          const verified = score >= 3
+          return { ...a, verified, expired }
         })
       })
     }, 30_000)
     return () => clearInterval(interval)
-  }, [])
+  }, [severityTtl])
 
   const requestNotifyPermission = async () => {
     if ('Notification' in window && Notification.permission === 'default') {
@@ -66,12 +93,21 @@ export function AlertsProvider({ children }) {
     }
   }
 
-  const addAlert = ({ type, severity, description, photos, lat, lng, contributor = 'You' }) => {
+  const addAlert = ({ type, severity, description, photos, lat, lng, contributor = 'You', voiceNote = null, alternateRoutes = [] }) => {
     const id = ++lastAlertId.current
     const photoObjs = (photos || []).map((f) => ({
       name: f.name,
       url: URL.createObjectURL(f),
     }))
+    
+    // Convert voiceNote Blob to URL if it exists
+    let voiceNoteUrl = null
+    if (voiceNote && voiceNote instanceof Blob) {
+      voiceNoteUrl = URL.createObjectURL(voiceNote)
+    } else if (typeof voiceNote === 'string') {
+      voiceNoteUrl = voiceNote
+    }
+    
     const alert = {
       id,
       type,
@@ -85,6 +121,8 @@ export function AlertsProvider({ children }) {
       votesUp: 0,
       votesDown: 0,
       verified: false,
+      voiceNote: voiceNoteUrl,
+      alternateRoutes: alternateRoutes || [],
     }
     setAlerts((prev) => [alert, ...prev])
     notifyIfNearby(alert)
@@ -102,14 +140,36 @@ export function AlertsProvider({ children }) {
     )
   }
 
+  const updateAlert = (id, patch) => {
+    setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)))
+  }
+
+  const removeAlert = (id) => {
+    setAlerts((prev) => prev.filter((a) => a.id !== id))
+  }
+
+  const reloadAlerts = () => {
+    setAlerts((prev) => [...prev])
+  }
+
   const value = {
     alerts,
+    setAlerts,
     addAlert,
     voteAlert,
+    updateAlert,
+    removeAlert,
+    reloadAlerts,
+    severityTtl,
+    setSeverityTtl,
     userLocation,
     setUserLocation,
     nearbyRadiusMeters,
     setNearbyRadiusMeters,
+    // Comments
+    alertComments,
+    getCommentsForAlert,
+    addCommentToAlert,
   }
 
   return <AlertsContext.Provider value={value}>{children}</AlertsContext.Provider>
