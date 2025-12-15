@@ -1,7 +1,12 @@
-
 import { useEffect, useRef } from 'react'
 import { useNotifications } from '../context/NotificationContext'
 
+/**
+ * AlertNotificationListener
+ * 
+ * This component listens for new alerts from OTHER tabs (not local ones)
+ * and displays notifications when a new alert is received.
+ */
 export default function AlertNotificationListener() {
   const { notifyNewHazard, requestPermission } = useNotifications()
   const hasRequestedPermission = useRef(false)

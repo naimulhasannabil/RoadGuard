@@ -1,4 +1,3 @@
-
 import { useNotifications } from '../context/NotificationContext'
 import CloseIcon from '@mui/icons-material/Close'
 import WarningIcon from '@mui/icons-material/Warning'

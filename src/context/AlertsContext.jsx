@@ -38,6 +38,27 @@ export function AlertsProvider({ children }) {
   
   // Callback to notify about new alerts (set by App component)
   const onNewAlertRef = useRef(null)
+  
+  // Store comments by alert ID - persists across page navigation
+  const [alertComments, setAlertComments] = useState({})
+  
+  const getCommentsForAlert = (alertId) => {
+    return alertComments[alertId] || [
+      // Default placeholder comments for demo
+      { id: 1, author: 'Traffic Officer', text: 'Confirmed. Crew dispatched to location.', time: '5 mins ago', isOfficial: true },
+      { id: 2, author: 'Local Driver', text: 'Still blocked as of now. Take the alternate route via Ring Road.', time: '12 mins ago', isOfficial: false },
+    ]
+  }
+  
+  const addCommentToAlert = (alertId, comment) => {
+    setAlertComments(prev => {
+      const existingComments = prev[alertId] || getCommentsForAlert(alertId)
+      return {
+        ...prev,
+        [alertId]: [comment, ...existingComments]
+      }
+    })
+  }
 
   // Listen for alerts from other tabs via BroadcastChannel
   useEffect(() => {
@@ -220,6 +241,10 @@ export function AlertsProvider({ children }) {
     setNearbyRadiusMeters,
     setOnNewAlert,
     haversineMeters,
+    // Comments
+    alertComments,
+    getCommentsForAlert,
+    addCommentToAlert,
   }
 
   return <AlertsContext.Provider value={value}>{children}</AlertsContext.Provider>

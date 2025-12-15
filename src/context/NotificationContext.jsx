@@ -1,5 +1,3 @@
-
-
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
 
 const NotificationContext = createContext(null)

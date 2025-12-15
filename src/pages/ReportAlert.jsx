@@ -19,6 +19,13 @@ import AudiotrackIcon from '@mui/icons-material/Audiotrack'
 import EditLocationIcon from '@mui/icons-material/EditLocation'
 import MyLocationIcon from '@mui/icons-material/MyLocation'
 
+import AddPhotoAlternateIcon from '@mui/icons-material/AddPhotoAlternate'
+import ArrowBackIcon from '@mui/icons-material/ArrowBack'
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
+import CloseIcon from '@mui/icons-material/Close'
+import CollectionsIcon from '@mui/icons-material/Collections'
+
+
 const HAZARD_TYPES = [
   { value: 'Potholes', icon: '🕳️', color: 'from-gray-500 to-gray-600' },
   { value: 'Accident', icon: '🚨', color: 'from-red-500 to-red-600' },
@@ -408,11 +415,30 @@ export default function ReportAlert() {
 
   const onPhotoChange = (e) => {
     const files = Array.from(e.target.files || [])
-    setForm(f => ({ ...f, photos: files }))
+    if (files.length === 0) return
+    
+    // Add new photos to existing photos (max 10 photos)
+    setForm(f => {
+      const newPhotos = [...f.photos, ...files].slice(0, 10)
+      return { ...f, photos: newPhotos }
+    })
+    
+    // Reset input so same file can be selected again
+    e.target.value = ''
   }
 
   const removePhoto = (index) => {
     setForm(f => ({ ...f, photos: f.photos.filter((_, i) => i !== index) }))
+  }
+  
+  const movePhoto = (index, direction) => {
+    setForm(f => {
+      const newPhotos = [...f.photos]
+      const newIndex = index + direction
+      if (newIndex < 0 || newIndex >= newPhotos.length) return f
+      ;[newPhotos[index], newPhotos[newIndex]] = [newPhotos[newIndex], newPhotos[index]]
+      return { ...f, photos: newPhotos }
+    })
   }
 
   const onSubmit = async (e) => {
@@ -709,13 +735,26 @@ export default function ReportAlert() {
             )}
           </div>
 
-{/* Photos Upload */}
+{/* Photos Upload - Enhanced Multiple Image Upload */}
           <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
-            <label className="flex items-center gap-2 text-lg font-bold text-gray-800 mb-3">
-              <PhotoCameraIcon className="text-orange-500" />
-              Photos (Optional)
-            </label>
-            <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-orange-400 transition-colors">
+            <div className="flex items-center justify-between mb-4">
+              <label className="flex items-center gap-2 text-lg font-bold text-gray-800">
+                <CollectionsIcon className="text-orange-500" />
+                Photos (Optional)
+              </label>
+              {form.photos.length > 0 && (
+                <span className="px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-sm font-semibold">
+                  {form.photos.length}/10 photos
+                </span>
+              )}
+            </div>
+            
+            {/* Upload Area */}
+            <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-all ${
+              form.photos.length >= 10 
+                ? 'border-gray-200 bg-gray-50 cursor-not-allowed' 
+                : 'border-gray-300 hover:border-orange-400 hover:bg-orange-50 cursor-pointer'
+            }`}>
               <input
                 type="file"
                 multiple
@@ -723,30 +762,121 @@ export default function ReportAlert() {
                 onChange={onPhotoChange}
                 className="hidden"
                 id="photo-upload"
+                disabled={form.photos.length >= 10}
               />
-              <label htmlFor="photo-upload" className="cursor-pointer">
-                <PhotoCameraIcon className="text-gray-400 mx-auto mb-2" style={{ fontSize: 48 }} />
-                <p className="text-gray-600 font-semibold">Click to upload photos</p>
-                <p className="text-gray-400 text-sm mt-1">PNG, JPG up to 10MB</p>
+              <label htmlFor="photo-upload" className={`block ${form.photos.length >= 10 ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                <AddPhotoAlternateIcon 
+                  className={form.photos.length >= 10 ? 'text-gray-300' : 'text-orange-400'} 
+                  style={{ fontSize: 48 }} 
+                />
+                <p className={`font-semibold mt-2 ${form.photos.length >= 10 ? 'text-gray-400' : 'text-gray-600'}`}>
+                  {form.photos.length >= 10 
+                    ? 'Maximum 10 photos reached' 
+                    : form.photos.length > 0 
+                      ? 'Click to add more photos' 
+                      : 'Click to upload photos'
+                  }
+                </p>
+                <p className="text-gray-400 text-sm mt-1">PNG, JPG, WEBP • Max 10MB each • Up to 10 photos</p>
               </label>
             </div>
+            
+            {/* Photo Gallery Preview */}
             {form.photos.length > 0 && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4">
-                {form.photos.map((f, idx) => {
-                  const url = URL.createObjectURL(f)
-                  return (
-                    <div key={url} className="relative group">
-                      <img src={url} alt={f.name} className="w-full h-32 object-cover rounded-xl shadow-md" />
-                      <button
-                        type="button"
-                        onClick={() => removePhoto(idx)}
-                        className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+              <div className="mt-5">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-semibold text-gray-700">Uploaded Photos</span>
+                  <button
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, photos: [] }))}
+                    className="text-xs text-red-600 hover:text-red-700 font-semibold flex items-center gap-1"
+                  >
+                    <DeleteIcon style={{ fontSize: 14 }} />
+                    Clear All
+                  </button>
+                </div>
+                
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                  {form.photos.map((file, idx) => {
+                    const url = URL.createObjectURL(file)
+                    return (
+                      <div 
+                        key={`${file.name}-${idx}`} 
+                        className="relative group aspect-square rounded-xl overflow-hidden shadow-md border-2 border-gray-100 hover:border-orange-300 transition-all"
                       >
-                        ✕
-                      </button>
-                    </div>
-                  )
-                })}
+                        <img 
+                          src={url} 
+                          alt={file.name} 
+                          className="w-full h-full object-cover"
+                        />
+                        
+                        {/* Overlay with actions */}
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                          {/* Move Left */}
+                          {idx > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => movePhoto(idx, -1)}
+                              className="p-1.5 bg-white rounded-full shadow-md hover:bg-gray-100 transition-all"
+                              title="Move Left"
+                            >
+                              <ArrowBackIcon style={{ fontSize: 16 }} className="text-gray-700" />
+                            </button>
+                          )}
+                          
+                          {/* Delete */}
+                          <button
+                            type="button"
+                            onClick={() => removePhoto(idx)}
+                            className="p-1.5 bg-red-500 rounded-full shadow-md hover:bg-red-600 transition-all"
+                            title="Remove Photo"
+                          >
+                            <CloseIcon style={{ fontSize: 16 }} className="text-white" />
+                          </button>
+                          
+                          {/* Move Right */}
+                          {idx < form.photos.length - 1 && (
+                            <button
+                              type="button"
+                              onClick={() => movePhoto(idx, 1)}
+                              className="p-1.5 bg-white rounded-full shadow-md hover:bg-gray-100 transition-all"
+                              title="Move Right"
+                            >
+                              <ArrowForwardIcon style={{ fontSize: 16 }} className="text-gray-700" />
+                            </button>
+                          )}
+                        </div>
+                        
+                        {/* Photo number badge */}
+                        <div className="absolute top-2 left-2 w-6 h-6 bg-orange-500 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md">
+                          {idx + 1}
+                        </div>
+                        
+                        {/* File size */}
+                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2">
+                          <p className="text-white text-xs truncate">{file.name}</p>
+                          <p className="text-white/70 text-xs">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  
+                  {/* Add More Button (inline) */}
+                  {form.photos.length < 10 && (
+                    <label 
+                      htmlFor="photo-upload"
+                      className="aspect-square rounded-xl border-2 border-dashed border-gray-300 hover:border-orange-400 flex flex-col items-center justify-center cursor-pointer transition-all hover:bg-orange-50"
+                    >
+                      <AddPhotoAlternateIcon className="text-gray-400" style={{ fontSize: 32 }} />
+                      <span className="text-xs text-gray-500 mt-1">Add More</span>
+                    </label>
+                  )}
+                </div>
+                
+                <p className="text-xs text-gray-500 mt-3 flex items-center gap-1">
+                  <span>💡</span>
+                  Tip: Hover over photos to reorder or remove them. First photo will be the main image.
+                </p>
               </div>
             )}
           </div>

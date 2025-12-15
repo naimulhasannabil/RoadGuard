@@ -1,5 +1,3 @@
-
-
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
 import { useAlerts, haversineMeters } from './AlertsContext'
 import { useNotifications } from './NotificationContext'
@@ -14,7 +12,7 @@ const DEFAULT_SETTINGS = {
   updateInterval: 5000, // ms - how often to check location
 }
 
-// Alias for backwards compatibility
+// Alias for backwards compatibility - reuse from AlertsContext (no code duplication)
 const calculateDistance = haversineMeters
 
 export function GeoFenceProvider({ children }) {
