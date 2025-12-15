@@ -2,6 +2,11 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react'
 
 const AlertsContext = createContext(null)
 
+// BroadcastChannel for cross-tab alert sync
+const alertChannel = typeof window !== 'undefined' && 'BroadcastChannel' in window
+  ? new BroadcastChannel('roadguard-alerts')
+  : null
+
 const DEFAULT_TTL_MINUTES = {
   Low: 30,
   Medium: 60,
@@ -25,10 +30,47 @@ export function AlertsProvider({ children }) {
   const [alerts, setAlerts] = useState([])
   const [userLocation, setUserLocation] = useState(null) // { lat, lng }
   const [nearbyRadiusMeters, setNearbyRadiusMeters] = useState(500)
-  const lastAlertId = useRef(0)
-
   const [severityTtl, setSeverityTtl] = useState(DEFAULT_TTL_MINUTES)
+  const lastAlertId = useRef(0)
+  
+  // Track locally created alert IDs to avoid showing notifications for own alerts
+  const localAlertIds = useRef(new Set())
+  
+  // Callback to notify about new alerts (set by App component)
+  const onNewAlertRef = useRef(null)
 
+  // Listen for alerts from other tabs via BroadcastChannel
+  useEffect(() => {
+    if (!alertChannel) return
+    
+    const handleMessage = (event) => {
+      const { type, alert } = event.data
+      if (type === 'NEW_ALERT' && alert && alert.id) {
+        // Skip if this is our own alert
+        if (localAlertIds.current.has(alert.id)) {
+          return
+        }
+        
+        setAlerts((prev) => {
+          // Avoid duplicates
+          if (prev.some(a => a.id === alert.id)) {
+            return prev
+          }
+          return [alert, ...prev]
+        })
+        
+        // Dispatch event for notification listener (only for alerts from OTHER tabs)
+        window.dispatchEvent(new CustomEvent('roadguard-remote-alert', { detail: alert }))
+      }
+    }
+    
+    alertChannel.onmessage = handleMessage
+    return () => {
+      alertChannel.onmessage = null
+    }
+  }, [])
+
+  // Auto-expire and verify alerts based on TTL and votes
   useEffect(() => {
     const interval = setInterval(() => {
       setAlerts((prev) => {
@@ -50,6 +92,7 @@ export function AlertsProvider({ children }) {
     return () => clearInterval(interval)
   }, [severityTtl])
 
+  // Request notification permission on mount
   const requestNotifyPermission = async () => {
     if ('Notification' in window && Notification.permission === 'default') {
       try { await Notification.requestPermission() } catch {}
@@ -60,6 +103,7 @@ export function AlertsProvider({ children }) {
     requestNotifyPermission()
   }, [])
 
+  // Show browser notification if alert is nearby
   const notifyIfNearby = (alert) => {
     if (!('Notification' in window)) return
     if (Notification.permission !== 'granted') return
@@ -68,6 +112,7 @@ export function AlertsProvider({ children }) {
     if (d <= nearbyRadiusMeters) {
       new Notification('Nearby Hazard', {
         body: `${alert.type} (${alert.severity}) at ${d.toFixed(0)}m`,
+        icon: '/favicon.ico',
       })
     }
   }
@@ -103,8 +148,32 @@ export function AlertsProvider({ children }) {
       voiceNote: voiceNoteUrl,
       alternateRoutes: alternateRoutes || [],
     }
+    
+    // Track this as a local alert so we don't show notification for it
+    localAlertIds.current.add(id)
+    
     setAlerts((prev) => [alert, ...prev])
+    
+    // Broadcast to other tabs
+    if (alertChannel) {
+      // Create a serializable version (no Blob URLs)
+      const broadcastAlert = {
+        ...alert,
+        photos: [], // Can't serialize blob URLs
+        voiceNote: null, // Can't serialize blob URLs
+      }
+      alertChannel.postMessage({ type: 'NEW_ALERT', alert: broadcastAlert })
+    }
+    
+    // Show browser notification if nearby
     notifyIfNearby(alert)
+    
+    // Trigger notification callback if set
+    if (onNewAlertRef.current) {
+      onNewAlertRef.current(alert)
+    }
+    
+    return alert
   }
 
   const voteAlert = (id, delta) => {
@@ -130,6 +199,10 @@ export function AlertsProvider({ children }) {
   const reloadAlerts = () => {
     setAlerts((prev) => [...prev])
   }
+  
+  const setOnNewAlert = (callback) => {
+    onNewAlertRef.current = callback
+  }
 
   const value = {
     alerts,
@@ -145,9 +218,12 @@ export function AlertsProvider({ children }) {
     setUserLocation,
     nearbyRadiusMeters,
     setNearbyRadiusMeters,
+    setOnNewAlert,
+    haversineMeters,
   }
 
   return <AlertsContext.Provider value={value}>{children}</AlertsContext.Provider>
 }
 
 export const useAlerts = () => useContext(AlertsContext)
+export { haversineMeters }
