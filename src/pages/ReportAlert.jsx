@@ -1,6 +1,9 @@
+
 import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAlerts } from '../context/AlertsContext'
+import { useNotifications } from '../context/NotificationContext'
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
 import WarningIcon from '@mui/icons-material/Warning'
 import LocationOnIcon from '@mui/icons-material/LocationOn'
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera'
@@ -13,6 +16,8 @@ import GraphicEqIcon from '@mui/icons-material/GraphicEq'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import PauseIcon from '@mui/icons-material/Pause'
 import AudiotrackIcon from '@mui/icons-material/Audiotrack'
+import EditLocationIcon from '@mui/icons-material/EditLocation'
+import MyLocationIcon from '@mui/icons-material/MyLocation'
 
 const HAZARD_TYPES = [
   { value: 'Potholes', icon: '🕳️', color: 'from-gray-500 to-gray-600' },
@@ -32,9 +37,21 @@ const SEVERITIES = [
   { value: 'High', color: 'from-red-500 to-red-600', icon: '🔴' }
 ]
 
+// Component to handle map click for location selection
+function LocationMarker({ position, setPosition }) {
+  useMapEvents({
+    click(e) {
+      setPosition(e.latlng.lat, e.latlng.lng)
+    },
+  })
+
+  return position ? <Marker position={position} /> : null
+}
+
 export default function ReportAlert() {
   const navigate = useNavigate()
   const { addAlert } = useAlerts()
+  const { showToast } = useNotifications()
   const [form, setForm] = useState({
     type: '',
     severity: '',
@@ -371,9 +388,20 @@ export default function ReportAlert() {
   useEffect(() => {
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
-        (pos) => setForm(f => ({ ...f, lat: pos.coords.latitude, lng: pos.coords.longitude })),
-        () => {},
-        { enableHighAccuracy: true, timeout: 5000 }
+        (pos) => {
+          console.log('Location detected:', pos.coords.latitude, pos.coords.longitude)
+          setForm(f => ({ ...f, lat: pos.coords.latitude, lng: pos.coords.longitude }))
+        },
+        (error) => {
+          console.error('Location error:', error.message)
+          // Try again with lower accuracy
+          navigator.geolocation.getCurrentPosition(
+            (pos) => setForm(f => ({ ...f, lat: pos.coords.latitude, lng: pos.coords.longitude })),
+            (err) => console.error('Location retry failed:', err.message),
+            { enableHighAccuracy: false, timeout: 15000 }
+          )
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
       )
     }
   }, [])
@@ -402,6 +430,10 @@ export default function ReportAlert() {
         alternateRoutes: form.alternateRoutes,
         voiceNote: form.voiceNote
       })
+      
+      // Show success notification
+      showToast(`${form.type} hazard reported successfully!`, 'success', 5000)
+      
       setIsSubmitting(false)
       navigate('/')
     }, 800)
@@ -719,27 +751,67 @@ export default function ReportAlert() {
             )}
           </div>
 
-          {/* Location Info */}
+          {/* Location Picker with Map */}
           <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl shadow-xl p-6 border border-blue-200">
-            <div className="flex items-center gap-3">
-              <LocationOnIcon className="text-blue-600" style={{ fontSize: 32 }} />
-              <div>
-                <div className="text-sm font-semibold text-blue-900">Current Location</div>
-                <div className="text-blue-700">
-                  {form.lat && form.lng ? (
-                    <span className="flex items-center gap-2">
-                      <CheckCircleIcon style={{ fontSize: 18 }} />
-                      {form.lat.toFixed(5)}, {form.lng.toFixed(5)}
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-2">
-                      <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                      Detecting location...
-                    </span>
-                  )}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <LocationOnIcon className="text-blue-600" style={{ fontSize: 28 }} />
+                <div>
+                  <div className="text-sm font-semibold text-blue-900">Hazard Location</div>
+                  <div className="text-blue-700 text-sm">
+                    {form.lat && form.lng ? (
+                      <span className="flex items-center gap-1">
+                        <CheckCircleIcon style={{ fontSize: 14 }} />
+                        {form.lat.toFixed(5)}, {form.lng.toFixed(5)}
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1">
+                        <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                        Detecting...
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if ('geolocation' in navigator) {
+                      navigator.geolocation.getCurrentPosition(
+                        (pos) => {
+                          setForm(f => ({ ...f, lat: pos.coords.latitude, lng: pos.coords.longitude }))
+                        },
+                        (err) => alert('Could not get location: ' + err.message),
+                        { enableHighAccuracy: true, timeout: 10000 }
+                      )
+                    }
+                  }}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition-all shadow-md hover:shadow-lg"
+                >
+                  <MyLocationIcon style={{ fontSize: 16 }} />
+                  Locate Me
+                </button>
+                <div className="flex items-center gap-1 text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
+                  <EditLocationIcon style={{ fontSize: 14 }} />
+                  Click map
                 </div>
               </div>
             </div>
+            
+            {/* Mini Map for Location Selection */}
+            <div className="rounded-xl overflow-hidden border-2 border-blue-200 shadow-inner" style={{ height: '200px' }}>
+              <MapContainer
+                center={[form.lat || 23.8103, form.lng || 90.4125]}
+                zoom={15}
+                style={{ height: '100%', width: '100%' }}
+                key={`${form.lat}-${form.lng}`}
+              >
+                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                <LocationMarker position={form.lat && form.lng ? [form.lat, form.lng] : null} setPosition={(lat, lng) => setForm(f => ({ ...f, lat, lng }))} />
+              </MapContainer>
+            </div>
+            <p className="text-xs text-blue-600 mt-2 text-center">📍 Click on the map to set exact hazard location or use "Locate Me" button</p>
           </div>
 
           {/* Submit Button */}

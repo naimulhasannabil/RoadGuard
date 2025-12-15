@@ -1,5 +1,9 @@
+
+
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Navbar from './components/Navbar'
+import NotificationToast from './components/NotificationToast'
+import AlertNotificationListener from './components/AlertNotificationListener'
 import MapPage from './pages/MapPage'
 import ReportAlert from './pages/ReportAlert'
 import Profile from './pages/Profile'
@@ -10,13 +14,13 @@ import Emergency from './pages/Emergency'
 
 function App() {
   const location = useLocation()
-  const hideNavbar = [ '/login', '/signup'].includes(location.pathname)
-
-  console.log('App rendering, location:', location.pathname)
+  const hideNavbar = ['/login', '/signup'].includes(location.pathname)
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f0f0f0' }}>
+    <div className="min-h-screen bg-slate-50">
       {!hideNavbar && <Navbar />}
+      <NotificationToast />
+      <AlertNotificationListener />
       <Routes>
         <Route path="/" element={<MapPage />} />
         <Route path="/report" element={<ReportAlert />} />
