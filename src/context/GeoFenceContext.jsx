@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
-import { useAlerts } from './AlertsContext'
+import { useAlerts, haversineMeters } from './AlertsContext'
 import { useNotifications } from './NotificationContext'
 
 const GeoFenceContext = createContext(null)
@@ -12,19 +12,8 @@ const DEFAULT_SETTINGS = {
   updateInterval: 5000, // ms - how often to check location
 }
 
-// Haversine formula to calculate distance between two points
-function calculateDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371000 // Earth's radius in meters
-  const toRad = (v) => (v * Math.PI) / 180
-  const dLat = toRad(lat2 - lat1)
-  const dLon = toRad(lon2 - lon1)
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2)
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-  return R * c
-}
+// Alias for backwards compatibility - reuse from AlertsContext (no code duplication)
+const calculateDistance = haversineMeters
 
 export function GeoFenceProvider({ children }) {
   const { alerts } = useAlerts()

@@ -13,6 +13,20 @@ export default defineConfig({
       port: 55001,       // HMR on a different high port
     },
     open: false,
+    proxy: {
+      '/api/osrm': {
+        target: 'https://routing.openstreetmap.de',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/osrm/, ''),
+        secure: true,
+      },
+      '/api/route': {
+        target: 'https://router.project-osrm.org',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/route/, '/route/v1'),
+        secure: true,
+      }
+    }
   },
   preview: {
     host: 'localhost',
