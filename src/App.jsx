@@ -1,5 +1,3 @@
-
-
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Navbar from './components/Navbar'
 import NotificationToast from './components/NotificationToast'
@@ -15,7 +13,7 @@ import Settings from './pages/Settings'
 
 function App() {
   const location = useLocation()
-  const hideNavbar = ['/login', '/signup', '/settings'].includes(location.pathname)
+  const hideNavbar = ['/login', '/signup', '/settings', '/admin'].includes(location.pathname)
 
   return (
     <div className="min-h-screen bg-slate-50">
