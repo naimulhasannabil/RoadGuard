@@ -11,10 +11,11 @@ import Login from './pages/Login'
 import Signup from './pages/Signup'
 import AdminDashboard from './pages/AdminDashboard'
 import Emergency from './pages/Emergency'
+import Settings from './pages/Settings'
 
 function App() {
   const location = useLocation()
-  const hideNavbar = ['/login', '/signup'].includes(location.pathname)
+  const hideNavbar = ['/login', '/signup', '/settings'].includes(location.pathname)
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -27,6 +28,7 @@ function App() {
         <Route path="/emergency" element={<Emergency />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="/settings" element={<Settings />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="*" element={<Navigate to="/" replace />} />

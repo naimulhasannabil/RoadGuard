@@ -294,7 +294,7 @@ const buildRouteResult = (scoredRoutes, bestRouteIdx, instructions = []) => {
 }
 
 // Routing Control Component (renders inside MapContainer)
-function RoutingMachine({ start, end, hazards, onRouteFound, onRouteClear, selectedRouteIndex, onRouteSelect }) {
+function RoutingMachine({ start, end, hazards, onRouteFound, onRouteClear, selectedRouteIndex, onRouteSelect, isLiveTracking }) {
   const map = useMap()
   const routingControlRef = useRef(null)
   const polylineRef = useRef(null)
@@ -363,9 +363,14 @@ function RoutingMachine({ start, end, hazards, onRouteFound, onRouteClear, selec
       className: ''
     })
     
-    const startMarker = L.marker([start.lat, start.lng], { icon: startIcon }).addTo(map)
+    // Only show start marker if NOT live tracking (to avoid duplicate with user location marker)
     const endMarker = L.marker([end.lat, end.lng], { icon: endIcon }).addTo(map)
-    markersRef.current = [startMarker, endMarker]
+    if (!isLiveTracking) {
+      const startMarker = L.marker([start.lat, start.lng], { icon: startIcon }).addTo(map)
+      markersRef.current = [startMarker, endMarker]
+    } else {
+      markersRef.current = [endMarker]
+    }
 
     // Function to calculate hazard score for a route
     const calculateRouteHazardScore = (routeCoords) => {
@@ -681,7 +686,7 @@ function RoutingMachine({ start, end, hazards, onRouteFound, onRouteClear, selec
       })
       markersRef.current = []
     }
-  }, [map, start?.lat, start?.lng, end?.lat, end?.lng, hazards, selectedRouteIndex])
+  }, [map, start?.lat, start?.lng, end?.lat, end?.lng, hazards, selectedRouteIndex, isLiveTracking])
 
   return null
 }
@@ -740,7 +745,7 @@ function MapClickHandler({ isActive, pickingMode, onLocationPicked }) {
 }
 
 // Main Navigation Panel Component
-export function NavigationPanel({ userLocation, alerts, onStartChange, onEndChange, start, end, onLiveTrackingChange, liveTrackingData, onPickModeChange, pickingMode, routeInfo, onRouteSelect }) {
+export function NavigationPanel({ userLocation, alerts, onStartChange, onEndChange, start, end, onLiveTrackingChange, liveTrackingData, onPickModeChange, pickingMode, routeInfo, onRouteSelect, isMobile = false }) {
   const [startInput, setStartInput] = useState('')
   const [endInput, setEndInput] = useState('')
   const [isNavigating, setIsNavigating] = useState(false)
@@ -966,19 +971,19 @@ export function NavigationPanel({ userLocation, alerts, onStartChange, onEndChan
   const activeHazards = alerts?.filter(a => !a.expired && (a.severity === 'High' || a.severity === 'Medium')) || []
 
   return (
-    <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden w-80">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-3 flex items-center justify-between">
+    <div className={`bg-white overflow-hidden ${isMobile ? 'rounded-none' : 'rounded-2xl shadow-2xl border border-gray-100 w-80'}`}>
+      {/* Header - Compact for mobile */}
+      <div className={`bg-gradient-to-r from-emerald-500 to-teal-500 flex items-center justify-between ${isMobile ? 'px-3 py-2' : 'px-4 py-3'}`}>
         <div className="flex items-center gap-2 text-white">
-          <DirectionsIcon />
-          <span className="font-bold">Route Navigation</span>
+          <DirectionsIcon style={{ fontSize: isMobile ? 18 : 24 }} />
+          <span className={`font-bold ${isMobile ? 'text-sm' : ''}`}>Route Navigation</span>
         </div>
       </div>
 
       {/* Input Section */}
-      <div className="p-4 space-y-3">
-        {/* Pick on Map Mode Indicator */}
-        {pickingMode && (
+      <div className={`space-y-2 ${isMobile ? 'p-3' : 'p-4 space-y-3'}`}>
+        {/* Pick on Map Mode Indicator - Hidden on mobile since parent shows it */}
+        {pickingMode && !isMobile && (
           <div className={`p-2 rounded-lg text-center text-sm font-medium animate-pulse ${
             pickingMode === 'start' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
           }`}>
@@ -988,19 +993,19 @@ export function NavigationPanel({ userLocation, alerts, onStartChange, onEndChan
 
         {/* Start Point */}
         <div className="relative">
-          <div className={`absolute left-3 top-3 w-3 h-3 rounded-full border-2 border-white shadow z-10 ${
+          <div className={`absolute left-3 w-3 h-3 rounded-full border-2 border-white shadow z-10 ${
             pickingMode === 'start' ? 'bg-green-500 animate-pulse' : 'bg-green-500'
-          }`}></div>
+          } ${isMobile ? 'top-2.5' : 'top-3'}`}></div>
           <input
             type="text"
-            placeholder="Search or pick on map..."
+            placeholder={isMobile ? "Start point..." : "Search or pick on map..."}
             value={startInput}
             onChange={(e) => handleStartInputChange(e.target.value)}
             onFocus={() => setShowStartSuggestions(true)}
             onBlur={() => setTimeout(() => setShowStartSuggestions(false), 200)}
-            className={`w-full pl-9 pr-20 py-2.5 border-2 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all outline-none ${
-              pickingMode === 'start' ? 'border-green-400 bg-green-50' : 'border-gray-200'
-            }`}
+            className={`w-full pl-9 pr-20 border-2 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all outline-none ${
+              isMobile ? 'py-2 text-xs' : 'py-2.5 text-sm'
+            } ${pickingMode === 'start' ? 'border-green-400 bg-green-50' : 'border-gray-200'}`}
           />
           <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
             <button
@@ -1012,7 +1017,7 @@ export function NavigationPanel({ userLocation, alerts, onStartChange, onEndChan
               }`}
               title="Pick on map"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg xmlns="http://www.w3.org/2000/svg" width={isMobile ? "16" : "18"} height={isMobile ? "16" : "18"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
                 <circle cx="12" cy="10" r="3"></circle>
               </svg>
@@ -1022,13 +1027,13 @@ export function NavigationPanel({ userLocation, alerts, onStartChange, onEndChan
               className="p-1 text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
               title="Use my location"
             >
-              <MyLocationIcon style={{ fontSize: 18 }} />
+              <MyLocationIcon style={{ fontSize: isMobile ? 16 : 18 }} />
             </button>
           </div>
           
           {/* Start Suggestions Dropdown */}
           {showStartSuggestions && (startSuggestions.length > 0 || isSearchingStart) && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto">
+            <div className={`absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 overflow-y-auto ${isMobile ? 'max-h-32' : 'max-h-48'}`}>
               {isSearchingStart ? (
                 <div className="p-3 text-center text-gray-500 text-sm">
                   <div className="animate-spin inline-block w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full mr-2"></div>
@@ -1039,9 +1044,9 @@ export function NavigationPanel({ userLocation, alerts, onStartChange, onEndChan
                   <button
                     key={idx}
                     onClick={() => selectStartSuggestion(suggestion)}
-                    className="w-full px-3 py-2 text-left hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0"
+                    className={`w-full text-left hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0 ${isMobile ? 'px-2 py-1.5' : 'px-3 py-2'}`}
                   >
-                    <div className="font-medium text-sm text-gray-800 truncate">{suggestion.shortName}</div>
+                    <div className={`font-medium text-gray-800 truncate ${isMobile ? 'text-xs' : 'text-sm'}`}>{suggestion.shortName}</div>
                     <div className="text-xs text-gray-500 truncate">{suggestion.name}</div>
                   </button>
                 ))
@@ -1050,32 +1055,32 @@ export function NavigationPanel({ userLocation, alerts, onStartChange, onEndChan
           )}
         </div>
 
-        {/* Swap Button */}
-        <div className="flex justify-center">
+        {/* Swap Button - More compact on mobile */}
+        <div className={`flex justify-center ${isMobile ? 'py-0' : ''}`}>
           <button
             onClick={swapLocations}
-            className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-all"
+            className={`text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-all ${isMobile ? 'p-1' : 'p-1.5'}`}
             title="Swap locations"
           >
-            <SwapVertIcon style={{ fontSize: 20 }} />
+            <SwapVertIcon style={{ fontSize: isMobile ? 18 : 20 }} />
           </button>
         </div>
 
         {/* End Point */}
         <div className="relative">
-          <div className={`absolute left-3 top-3 w-3 h-3 rounded-full border-2 border-white shadow z-10 ${
+          <div className={`absolute left-3 w-3 h-3 rounded-full border-2 border-white shadow z-10 ${
             pickingMode === 'end' ? 'bg-red-500 animate-pulse' : 'bg-red-500'
-          }`}></div>
+          } ${isMobile ? 'top-2.5' : 'top-3'}`}></div>
           <input
             type="text"
-            placeholder="Search or pick on map..."
+            placeholder={isMobile ? "Destination..." : "Search or pick on map..."}
             value={endInput}
             onChange={(e) => handleEndInputChange(e.target.value)}
             onFocus={() => setShowEndSuggestions(true)}
             onBlur={() => setTimeout(() => setShowEndSuggestions(false), 200)}
-            className={`w-full pl-9 pr-10 py-2.5 border-2 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all outline-none ${
-              pickingMode === 'end' ? 'border-red-400 bg-red-50' : 'border-gray-200'
-            }`}
+            className={`w-full pl-9 pr-10 border-2 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all outline-none ${
+              isMobile ? 'py-2 text-xs' : 'py-2.5 text-sm'
+            } ${pickingMode === 'end' ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
           />
           <button
             onClick={togglePickEnd}
@@ -1086,7 +1091,7 @@ export function NavigationPanel({ userLocation, alerts, onStartChange, onEndChan
             }`}
             title="Pick on map"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg xmlns="http://www.w3.org/2000/svg" width={isMobile ? "16" : "18"} height={isMobile ? "16" : "18"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
               <circle cx="12" cy="10" r="3"></circle>
             </svg>
@@ -1094,7 +1099,7 @@ export function NavigationPanel({ userLocation, alerts, onStartChange, onEndChan
           
           {/* End Suggestions Dropdown */}
           {showEndSuggestions && (endSuggestions.length > 0 || isSearchingEnd) && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto">
+            <div className={`absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 overflow-y-auto ${isMobile ? 'max-h-32' : 'max-h-48'}`}>
               {isSearchingEnd ? (
                 <div className="p-3 text-center text-gray-500 text-sm">
                   <div className="animate-spin inline-block w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full mr-2"></div>
@@ -1105,9 +1110,9 @@ export function NavigationPanel({ userLocation, alerts, onStartChange, onEndChan
                   <button
                     key={idx}
                     onClick={() => selectEndSuggestion(suggestion)}
-                    className="w-full px-3 py-2 text-left hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0"
+                    className={`w-full text-left hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0 ${isMobile ? 'px-2 py-1.5' : 'px-3 py-2'}`}
                   >
-                    <div className="font-medium text-sm text-gray-800 truncate">{suggestion.shortName}</div>
+                    <div className={`font-medium text-gray-800 truncate ${isMobile ? 'text-xs' : 'text-sm'}`}>{suggestion.shortName}</div>
                     <div className="text-xs text-gray-500 truncate">{suggestion.name}</div>
                   </button>
                 ))
@@ -1117,18 +1122,20 @@ export function NavigationPanel({ userLocation, alerts, onStartChange, onEndChan
         </div>
 
         {/* Action Buttons */}
+        {/* Action Buttons - Compact on mobile */}
         <div className="flex gap-2">
           {!isNavigating ? (
             <button
               onClick={startNavigation}
               disabled={!start || !end}
-              className={`flex-1 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2 transition-all ${
-                start && end
+              className={`flex-1 rounded-lg font-semibold flex items-center justify-center gap-2 transition-all ${
+                isMobile ? 'py-2 text-sm' : 'py-2.5'
+              } ${start && end
                   ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:shadow-lg transform hover:-translate-y-0.5'
                   : 'bg-gray-200 text-gray-500 cursor-not-allowed'
               }`}
             >
-              <DirectionsIcon style={{ fontSize: 18 }} />
+              <DirectionsIcon style={{ fontSize: isMobile ? 16 : 18 }} />
               Get Route
             </button>
           ) : (
@@ -1136,73 +1143,76 @@ export function NavigationPanel({ userLocation, alerts, onStartChange, onEndChan
               {!isLiveNavigating ? (
                 <button
                   onClick={startLiveNavigation}
-                  className="flex-1 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:shadow-lg transition-all"
+                  className={`flex-1 rounded-lg font-semibold flex items-center justify-center gap-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:shadow-lg transition-all ${isMobile ? 'py-2 text-sm' : 'py-2.5'}`}
                 >
-                  <PlayArrowIcon style={{ fontSize: 18 }} />
+                  <PlayArrowIcon style={{ fontSize: isMobile ? 16 : 18 }} />
                   Start
                 </button>
               ) : (
                 <button
                   onClick={stopLiveNavigation}
-                  className="flex-1 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2 bg-orange-500 text-white hover:bg-orange-600 transition-all animate-pulse"
+                  className={`flex-1 rounded-lg font-semibold flex items-center justify-center gap-2 bg-orange-500 text-white hover:bg-orange-600 transition-all animate-pulse ${isMobile ? 'py-2 text-sm' : 'py-2.5'}`}
                 >
-                  <StopIcon style={{ fontSize: 18 }} />
+                  <StopIcon style={{ fontSize: isMobile ? 16 : 18 }} />
                   Stop
                 </button>
               )}
               <button
                 onClick={clearNavigation}
-                className="px-4 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2 bg-red-500 text-white hover:bg-red-600 transition-all"
+                className={`rounded-lg font-semibold flex items-center justify-center gap-2 bg-red-500 text-white hover:bg-red-600 transition-all ${isMobile ? 'px-3 py-2' : 'px-4 py-2.5'}`}
               >
-                <CancelIcon style={{ fontSize: 18 }} />
+                <CancelIcon style={{ fontSize: isMobile ? 16 : 18 }} />
               </button>
             </>
           )}
         </div>
 
-        {/* Live Navigation Status */}
+        {/* Live Navigation Status - Compact on mobile */}
         {isLiveNavigating && (
-          <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl p-4 text-white">
-            <div className="flex items-center gap-2 mb-3">
+          <div className={`bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl text-white ${isMobile ? 'p-3' : 'p-4'}`}>
+            <div className={`flex items-center gap-2 ${isMobile ? 'mb-2' : 'mb-3'}`}>
               <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
-              <span className="font-bold">Live Navigation Active</span>
+              <span className={`font-bold ${isMobile ? 'text-sm' : ''}`}>Live Navigation Active</span>
             </div>
             
             {liveTrackingData && (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-white/20 rounded-lg p-2">
+              <div className={`grid grid-cols-2 ${isMobile ? 'gap-2' : 'gap-3'}`}>
+                <div className={`bg-white/20 rounded-lg ${isMobile ? 'p-1.5' : 'p-2'}`}>
                   <div className="flex items-center gap-1 text-white/80 text-xs mb-1">
-                    <SpeedIcon style={{ fontSize: 14 }} />
+                    <SpeedIcon style={{ fontSize: isMobile ? 12 : 14 }} />
                     Speed
                   </div>
-                  <div className="font-bold text-lg">{formatSpeed(liveTrackingData.speed)}</div>
+                  <div className={`font-bold ${isMobile ? 'text-base' : 'text-lg'}`}>{formatSpeed(liveTrackingData.speed)}</div>
                 </div>
                 
-                <div className="bg-white/20 rounded-lg p-2">
+                <div className={`bg-white/20 rounded-lg ${isMobile ? 'p-1.5' : 'p-2'}`}>
                   <div className="flex items-center gap-1 text-white/80 text-xs mb-1">
-                    <StraightenIcon style={{ fontSize: 14 }} />
+                    <StraightenIcon style={{ fontSize: isMobile ? 12 : 14 }} />
                     Remaining
                   </div>
-                  <div className="font-bold text-lg">
+                  <div className={`font-bold ${isMobile ? 'text-base' : 'text-lg'}`}>
                     {liveTrackingData.distanceToDestination 
                       ? formatDistance(liveTrackingData.distanceToDestination)
                       : '--'}
                   </div>
                 </div>
                 
-                <div className="col-span-2 bg-white/20 rounded-lg p-2">
-                  <div className="flex items-center gap-1 text-white/80 text-xs mb-1">
-                    <GpsFixedIcon style={{ fontSize: 14 }} />
-                    Accuracy
+                {/* Hide accuracy on mobile to save space */}
+                {!isMobile && (
+                  <div className="col-span-2 bg-white/20 rounded-lg p-2">
+                    <div className="flex items-center gap-1 text-white/80 text-xs mb-1">
+                      <GpsFixedIcon style={{ fontSize: 14 }} />
+                      Accuracy
+                    </div>
+                    <div className="font-medium">±{Math.round(liveTrackingData.accuracy || 0)}m</div>
                   </div>
-                  <div className="font-medium">±{Math.round(liveTrackingData.accuracy || 0)}m</div>
-                </div>
+                )}
               </div>
             )}
             
             {/* Arrival Check */}
             {liveTrackingData?.distanceToDestination && liveTrackingData.distanceToDestination < 50 && (
-              <div className="mt-3 bg-green-400 text-green-900 rounded-lg p-2 text-center font-bold animate-bounce">
+              <div className={`bg-green-400 text-green-900 rounded-lg text-center font-bold animate-bounce ${isMobile ? 'mt-2 p-1.5 text-sm' : 'mt-3 p-2'}`}>
                 🎉 You have arrived!
               </div>
             )}
@@ -1211,19 +1221,19 @@ export function NavigationPanel({ userLocation, alerts, onStartChange, onEndChan
 
         {/* Route Info Display */}
         {routeInfo && (
-          <div className={`rounded-xl p-4 border ${
+          <div className={`rounded-xl border ${isMobile ? 'p-3' : 'p-4'} ${
             routeInfo.isFallback 
               ? 'bg-gradient-to-br from-red-50 to-orange-50 border-red-300' 
               : 'bg-gradient-to-br from-green-50 to-emerald-50 border-green-200'
           }`}>
             {/* Fallback Warning - NOT a real road route */}
             {routeInfo.isFallback && (
-              <div className="bg-red-100 border-2 border-red-400 rounded-lg p-3 mb-3">
-                <div className="flex items-center gap-2 text-red-700 font-bold text-sm mb-1">
-                  <WarningIcon style={{ fontSize: 20 }} />
+              <div className={`bg-red-100 border-2 border-red-400 rounded-lg mb-3 ${isMobile ? 'p-2' : 'p-3'}`}>
+                <div className={`flex items-center gap-2 text-red-700 font-bold mb-1 ${isMobile ? 'text-xs' : 'text-sm'}`}>
+                  <WarningIcon style={{ fontSize: isMobile ? 16 : 20 }} />
                   ⚠️ Routing Service Unavailable
                 </div>
-                <div className="text-xs text-red-600">
+                <div className={`text-red-600 ${isMobile ? 'text-[10px]' : 'text-xs'}`}>
                   {routeInfo.fallbackMessage || 'Unable to calculate road route. The line shown is a straight line, NOT an actual road path.'}
                 </div>
                 <div className="text-xs text-red-500 mt-2 font-medium">

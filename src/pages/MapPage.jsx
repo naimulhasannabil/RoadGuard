@@ -8,6 +8,8 @@ import MyLocationIcon from '@mui/icons-material/MyLocation'
 import SearchIcon from '@mui/icons-material/Search'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import PauseIcon from '@mui/icons-material/Pause'
+import StopIcon from '@mui/icons-material/Stop'
+import SpeedIcon from '@mui/icons-material/Speed'
 import VolumeUpIcon from '@mui/icons-material/VolumeUp'
 import AltRouteIcon from '@mui/icons-material/AltRoute'
 import CloseIcon from '@mui/icons-material/Close'
@@ -786,7 +788,15 @@ export default function MapPage() {
   const handleRouteFound = useCallback((info) => setRouteInfo(info), [])
   const handleRouteClear = useCallback(() => { setRouteInfo(null); setSelectedRouteIndex(0) }, [])
   const handleRouteSelect = useCallback((index) => setSelectedRouteIndex(index), [])
-  const handleLiveTrackingChange = useCallback((isTracking) => { setIsLiveTracking(isTracking); if (!isTracking) setLiveTrackingData(null) }, [])
+  const handleLiveTrackingChange = useCallback((isTracking) => { 
+    setIsLiveTracking(isTracking)
+    if (!isTracking) {
+      setLiveTrackingData(null)
+    } else {
+      // Auto-collapse panel when navigation starts for better map visibility
+      setShowNavPanel(false)
+    }
+  }, [])
   const handleLiveLocationUpdate = useCallback((data) => setLiveTrackingData(data), [])
   const handlePickModeChange = useCallback((mode) => setPickingMode(mode), [])
   const handleLocationPicked = useCallback((location, mode) => {
@@ -1242,17 +1252,99 @@ export default function MapPage() {
           className={`absolute top-20 lg:top-24 right-4 lg:right-6 z-[1000] hidden lg:flex px-4 py-3 rounded-xl shadow-lg border transition-all items-center gap-2 ${
             showNavPanel 
               ? 'bg-emerald-500 text-white border-emerald-500 hover:bg-emerald-600' 
-              : 'bg-white text-slate-700 border-slate-200 hover:shadow-xl'
+              : isLiveTracking
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-emerald-500'
+                : 'bg-white text-slate-700 border-slate-200 hover:shadow-xl'
           }`}
         >
           <AltRouteIcon style={{ fontSize: 20 }} />
-          <span className="text-sm font-semibold">Route Navigation</span>
+          <span className="text-sm font-semibold">
+            {isLiveTracking && !showNavPanel ? 'Navigation' : 'Route Navigation'}
+          </span>
           <KeyboardArrowDownIcon className={`transition-transform duration-300 ${showNavPanel ? 'rotate-180' : ''}`} style={{ fontSize: 20 }} />
         </button>
 
-        {/* Navigation Panel - Desktop */}
+        {/* Compact Navigation Widget - Desktop (shows when navigating and panel is closed) */}
+        {isLiveTracking && !showNavPanel && (
+          <div className="absolute top-36 right-6 z-[1000] hidden lg:block animate-slideDown">
+            <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl shadow-2xl p-4 w-72">
+              {/* Header */}
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
+                    <div className="absolute inset-0 w-3 h-3 bg-white rounded-full animate-ping opacity-50"></div>
+                  </div>
+                  <span className="text-white font-bold text-sm">Live Navigation</span>
+                </div>
+                <button 
+                  onClick={() => handleLiveTrackingChange(false)}
+                  className="px-3 py-1.5 bg-red-500 hover:bg-red-600 rounded-lg text-white text-xs font-semibold flex items-center gap-1 transition-colors"
+                >
+                  <StopIcon style={{ fontSize: 14 }} />
+                  Stop
+                </button>
+              </div>
+              
+              {/* Stats */}
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                <div className="bg-white/20 backdrop-blur rounded-xl p-2 text-center">
+                  <div className="text-white/70 text-[10px] mb-0.5">SPEED</div>
+                  <div className="text-white font-bold text-lg">{((liveTrackingData?.speed || 0) * 3.6).toFixed(0)}</div>
+                  <div className="text-white/60 text-[9px]">km/h</div>
+                </div>
+                <div className="bg-white/20 backdrop-blur rounded-xl p-2 text-center">
+                  <div className="text-white/70 text-[10px] mb-0.5">DISTANCE</div>
+                  <div className="text-white font-bold text-lg">
+                    {liveTrackingData?.distanceToDestination 
+                      ? (liveTrackingData.distanceToDestination >= 1000 
+                          ? (liveTrackingData.distanceToDestination / 1000).toFixed(1)
+                          : Math.round(liveTrackingData.distanceToDestination))
+                      : '--'}
+                  </div>
+                  <div className="text-white/60 text-[9px]">{liveTrackingData?.distanceToDestination >= 1000 ? 'km' : 'm'}</div>
+                </div>
+                <div className="bg-white/20 backdrop-blur rounded-xl p-2 text-center">
+                  <div className="text-white/70 text-[10px] mb-0.5">ETA</div>
+                  <div className="text-white font-bold text-lg">
+                    {(() => {
+                      const dist = liveTrackingData?.distanceToDestination || 0
+                      const speed = (liveTrackingData?.speed || 0) * 3.6
+                      if (speed > 1 && dist > 0) {
+                        const timeMin = Math.ceil((dist / 1000) / speed * 60)
+                        return timeMin < 60 ? timeMin : Math.floor(timeMin / 60)
+                      }
+                      return typeof routeInfo?.duration === 'string' 
+                        ? routeInfo.duration.replace(/[^0-9]/g, '') 
+                        : routeInfo?.duration || '--'
+                    })()}
+                  </div>
+                  <div className="text-white/60 text-[9px]">min</div>
+                </div>
+              </div>
+              
+              {/* Expand button */}
+              <button 
+                onClick={() => setShowNavPanel(true)}
+                className="w-full py-2 bg-white/20 hover:bg-white/30 rounded-xl text-white text-xs font-medium transition-colors flex items-center justify-center gap-1"
+              >
+                <span>Show Full Panel</span>
+                <KeyboardArrowDownIcon style={{ fontSize: 16 }} />
+              </button>
+              
+              {/* Arrival notification */}
+              {liveTrackingData?.distanceToDestination && liveTrackingData.distanceToDestination < 50 && (
+                <div className="mt-3 bg-white text-emerald-700 rounded-xl p-3 text-center font-bold animate-bounce">
+                  🎉 You have arrived!
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Navigation Panel - Desktop (Full panel) */}
         {showNavPanel && (
-          <div className="absolute top-40 right-6 z-[1000] hidden lg:block animate-slideDown">
+          <div className={`absolute top-40 right-6 z-[1000] hidden lg:block animate-slideDown ${isLiveTracking ? 'max-h-[70vh] overflow-y-auto' : ''}`}>
             <NavigationPanel
               userLocation={userLocation}
               alerts={alerts}
@@ -1352,25 +1444,161 @@ export default function MapPage() {
           </div>
         </div>
 
-        {/* Mobile Navigation Panel */}
+        {/* Mobile Navigation Panel - Smart Collapsible Design */}
         {showNavPanel && (
-          <div className="absolute bottom-20 left-4 right-4 z-[1000] lg:hidden animate-slideUp">
-            <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 max-h-[50vh] overflow-y-auto">
-              <NavigationPanel
-                userLocation={userLocation}
-                alerts={alerts}
-                start={routeStart}
-                end={routeEnd}
-                onStartChange={setRouteStart}
-                onEndChange={setRouteEnd}
-                onLiveTrackingChange={handleLiveTrackingChange}
-                liveTrackingData={liveTrackingData}
-                pickingMode={pickingMode}
-                onPickModeChange={handlePickModeChange}
-                routeInfo={routeInfo}
-                onRouteSelect={handleRouteSelect}
-              />
-            </div>
+          <div className={`absolute left-4 right-4 z-[1000] lg:hidden transition-all duration-300 ${
+            pickingMode ? 'bottom-20' : 'bottom-20'
+          }`}>
+            {/* Minimized Navigation Bar - When live tracking is active */}
+            {isLiveTracking ? (
+              <div className="bg-gradient-to-r from-emerald-500 to-teal-500 rounded-2xl shadow-2xl p-3 animate-slideUp">
+                {/* Top row: Live indicator + Stop button */}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="relative">
+                      <div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
+                      <div className="absolute inset-0 w-3 h-3 bg-white rounded-full animate-ping opacity-75"></div>
+                    </div>
+                    <span className="text-white font-bold text-sm">Navigation Active</span>
+                  </div>
+                  
+                  <button 
+                    onClick={() => handleLiveTrackingChange(false)}
+                    className="px-4 py-2 bg-red-500 hover:bg-red-600 rounded-xl text-white font-semibold text-sm flex items-center gap-1.5 transition-colors shadow-lg"
+                  >
+                    <StopIcon style={{ fontSize: 18 }} />
+                    Stop
+                  </button>
+                </div>
+                
+                {/* Stats Grid: Speed, Distance, Time */}
+                <div className="grid grid-cols-3 gap-2">
+                  {/* Speed */}
+                  <div className="bg-white/20 backdrop-blur rounded-xl p-2 text-center">
+                    <div className="flex items-center justify-center gap-1 text-white/80 text-[10px] mb-1">
+                      <SpeedIcon style={{ fontSize: 12 }} />
+                      <span>SPEED</span>
+                    </div>
+                    <div className="text-white font-bold text-lg">
+                      {((liveTrackingData?.speed || 0) * 3.6).toFixed(0)}
+                    </div>
+                    <div className="text-white/70 text-[10px]">km/h</div>
+                  </div>
+                  
+                  {/* Distance */}
+                  <div className="bg-white/20 backdrop-blur rounded-xl p-2 text-center">
+                    <div className="flex items-center justify-center gap-1 text-white/80 text-[10px] mb-1">
+                      <StraightenIcon style={{ fontSize: 12 }} />
+                      <span>DISTANCE</span>
+                    </div>
+                    <div className="text-white font-bold text-lg">
+                      {liveTrackingData?.distanceToDestination 
+                        ? (liveTrackingData.distanceToDestination >= 1000 
+                            ? (liveTrackingData.distanceToDestination / 1000).toFixed(1)
+                            : Math.round(liveTrackingData.distanceToDestination))
+                        : (typeof routeInfo?.distance === 'string' 
+                            ? routeInfo.distance.replace(/[^0-9.]/g, '') 
+                            : routeInfo?.distance || '--')}
+                    </div>
+                    <div className="text-white/70 text-[10px]">
+                      {liveTrackingData?.distanceToDestination >= 1000 ? 'km' : 'm'}
+                    </div>
+                  </div>
+                  
+                  {/* ETA */}
+                  <div className="bg-white/20 backdrop-blur rounded-xl p-2 text-center">
+                    <div className="flex items-center justify-center gap-1 text-white/80 text-[10px] mb-1">
+                      <AccessTimeIcon style={{ fontSize: 12 }} />
+                      <span>ETA</span>
+                    </div>
+                    <div className="text-white font-bold text-lg">
+                      {(() => {
+                        const dist = liveTrackingData?.distanceToDestination || 0
+                        const speed = (liveTrackingData?.speed || 0) * 3.6 // km/h
+                        if (speed > 1 && dist > 0) {
+                          const timeMin = Math.ceil((dist / 1000) / speed * 60)
+                          return timeMin < 60 ? timeMin : Math.floor(timeMin / 60)
+                        }
+                        // Handle both string and number for duration
+                        if (typeof routeInfo?.duration === 'string') {
+                          return routeInfo.duration.replace(/[^0-9]/g, '') || '--'
+                        }
+                        return routeInfo?.duration || '--'
+                      })()}
+                    </div>
+                    <div className="text-white/70 text-[10px]">
+                      {(() => {
+                        const dist = liveTrackingData?.distanceToDestination || 0
+                        const speed = (liveTrackingData?.speed || 0) * 3.6
+                        if (speed > 1 && dist > 0) {
+                          const timeMin = Math.ceil((dist / 1000) / speed * 60)
+                          return timeMin < 60 ? 'min' : 'hr'
+                        }
+                        return 'min'
+                      })()}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Arrival notification */}
+                {liveTrackingData?.distanceToDestination && liveTrackingData.distanceToDestination < 50 && (
+                  <div className="mt-3 bg-white text-emerald-700 rounded-xl p-3 text-center font-bold animate-bounce shadow-lg">
+                    🎉 You have arrived at your destination!
+                  </div>
+                )}
+              </div>
+            ) : pickingMode ? (
+              /* Minimized Mode - When picking location on map */
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 p-3 animate-slideUp">
+                <div className="flex items-center justify-between gap-3">
+                  <div className={`flex items-center gap-2 px-3 py-2 rounded-xl flex-1 ${
+                    pickingMode === 'start' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+                  }`}>
+                    <div className={`w-3 h-3 rounded-full ${pickingMode === 'start' ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
+                    <span className="text-sm font-semibold">
+                      {pickingMode === 'start' ? 'Tap to set START' : 'Tap to set DESTINATION'}
+                    </span>
+                  </div>
+                  <button 
+                    onClick={() => setPickingMode(null)}
+                    className="p-2 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors"
+                  >
+                    <CloseIcon style={{ fontSize: 20 }} className="text-slate-600" />
+                  </button>
+                </div>
+                
+                {/* Quick location info */}
+                <div className="flex items-center gap-2 mt-2 text-xs text-slate-500">
+                  <MyLocationIcon style={{ fontSize: 14 }} />
+                  <span>Or use the search in the expanded panel</span>
+                  <button 
+                    onClick={() => setPickingMode(null)} 
+                    className="ml-auto text-emerald-600 font-semibold underline"
+                  >
+                    Expand
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Expanded Mode - Full Navigation Panel */
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 max-h-[45vh] overflow-y-auto animate-slideUp">
+                <NavigationPanel
+                  userLocation={userLocation}
+                  alerts={alerts}
+                  start={routeStart}
+                  end={routeEnd}
+                  onStartChange={setRouteStart}
+                  onEndChange={setRouteEnd}
+                  onLiveTrackingChange={handleLiveTrackingChange}
+                  liveTrackingData={liveTrackingData}
+                  pickingMode={pickingMode}
+                  onPickModeChange={handlePickModeChange}
+                  routeInfo={routeInfo}
+                  onRouteSelect={handleRouteSelect}
+                  isMobile={true}
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -1380,15 +1608,65 @@ export default function MapPage() {
             <MapController onMapReady={setMap} />
             <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
             
-            <RoutingMachine start={routeStart} end={routeEnd} hazards={activeHazards} onRouteFound={handleRouteFound} onRouteClear={handleRouteClear} selectedRouteIndex={selectedRouteIndex} onRouteSelect={handleRouteSelect} />
+            <RoutingMachine start={routeStart} end={routeEnd} hazards={activeHazards} onRouteFound={handleRouteFound} onRouteClear={handleRouteClear} selectedRouteIndex={selectedRouteIndex} onRouteSelect={handleRouteSelect} isLiveTracking={isLiveTracking} />
             <LiveLocationTracker isTracking={isLiveTracking} onLocationUpdate={handleLiveLocationUpdate} destination={routeEnd} />
             <MapClickHandler isActive={pickingMode !== null} pickingMode={pickingMode} onLocationPicked={handleLocationPicked} />
 
-            {/* User Location */}
+            {/* User Location - Professional animated marker */}
             {userLocation && (
-              <CircleMarker center={[userLocation.lat, userLocation.lng]} radius={10} pathOptions={{ color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.3, weight: 3 }}>
-                <Popup><div className="text-center py-1 font-medium text-slate-700">Your Location</div></Popup>
-              </CircleMarker>
+              <Marker 
+                position={[userLocation.lat, userLocation.lng]}
+                icon={L.divIcon({
+                  className: 'user-location-marker',
+                  html: isLiveTracking ? `
+                    <div class="relative flex items-center justify-center">
+                      <!-- Outer pulse ring -->
+                      <div class="absolute w-16 h-16 rounded-full bg-emerald-400/20 animate-ping"></div>
+                      <!-- Middle ring -->
+                      <div class="absolute w-12 h-12 rounded-full bg-emerald-400/30 animate-pulse"></div>
+                      <!-- Glow effect -->
+                      <div class="absolute w-8 h-8 rounded-full bg-emerald-500/50 blur-sm"></div>
+                      <!-- Main marker body -->
+                      <div class="relative w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-500/50 flex items-center justify-center border-3 border-white">
+                        <!-- Navigation arrow -->
+                        <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/>
+                        </svg>
+                      </div>
+                      <!-- Accuracy ring -->
+                      <div class="absolute w-14 h-14 rounded-full border-2 border-emerald-400 border-dashed opacity-60" style="animation: spin 8s linear infinite;"></div>
+                    </div>
+                  ` : `
+                    <div class="relative flex items-center justify-center">
+                      <!-- Soft glow -->
+                      <div class="absolute w-6 h-6 rounded-full bg-blue-500/30 blur-sm"></div>
+                      <!-- Main marker -->
+                      <div class="relative w-5 h-5 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 shadow-md shadow-blue-500/40 border-2 border-white flex items-center justify-center">
+                        <div class="w-2 h-2 rounded-full bg-white"></div>
+                      </div>
+                    </div>
+                  `,
+                  iconSize: [64, 64],
+                  iconAnchor: [32, 32],
+                  popupAnchor: [0, -20]
+                })}
+              >
+                <Popup>
+                  <div className="text-center py-2 px-3">
+                    <div className="font-bold text-slate-800 mb-1">
+                      {isLiveTracking ? '🧭 Live Navigation' : '📍 Your Location'}
+                    </div>
+                    {isLiveTracking && liveTrackingData?.speed && (
+                      <div className="text-xs text-emerald-600 font-medium">
+                        Moving at {((liveTrackingData.speed || 0) * 3.6).toFixed(0)} km/h
+                      </div>
+                    )}
+                    <div className="text-xs text-slate-500 mt-1">
+                      {userLocation.lat.toFixed(5)}, {userLocation.lng.toFixed(5)}
+                    </div>
+                  </div>
+                </Popup>
+              </Marker>
             )}
 
             {/* Hazard Markers */}
