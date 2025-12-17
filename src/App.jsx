@@ -2,18 +2,18 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Navbar from './components/Navbar'
 import NotificationToast from './components/NotificationToast'
 import AlertNotificationListener from './components/AlertNotificationListener'
+import { AuthProvider } from './context/AuthContext'
 import MapPage from './pages/MapPage'
 import ReportAlert from './pages/ReportAlert'
 import Profile from './pages/Profile'
 import Login from './pages/Login'
-import Signup from './pages/Signup'
 import AdminDashboard from './pages/AdminDashboard'
 import Emergency from './pages/Emergency'
 import Settings from './pages/Settings'
 
-function App() {
+function AppContent() {
   const location = useLocation()
-  const hideNavbar = ['/login', '/signup', '/settings', '/admin'].includes(location.pathname)
+  const hideNavbar = ['/login', '/settings', '/admin'].includes(location.pathname)
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -28,10 +28,18 @@ function App() {
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
+        <Route path="/signup" element={<Navigate to="/login" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>
+  )
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   )
 }
 

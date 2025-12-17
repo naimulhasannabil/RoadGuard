@@ -1,5 +1,7 @@
 import { useMemo, useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAlerts } from '../context/AlertsContext'
+import { useAuth } from '../context/AuthContext'
 import AccountCircleIcon from '@mui/icons-material/AccountCircle'
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents'
 import VerifiedIcon from '@mui/icons-material/Verified'
@@ -7,11 +9,24 @@ import ReportIcon from '@mui/icons-material/Report'
 import ThumbUpIcon from '@mui/icons-material/ThumbUp'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import LocalFireDepartmentIcon from '@mui/icons-material/LocalFireDepartment'
+import EditIcon from '@mui/icons-material/Edit'
+import EmailIcon from '@mui/icons-material/Email'
+import LogoutIcon from '@mui/icons-material/Logout'
 
 export default function Profile() {
   const { alerts } = useAlerts()
+  const { user, isAuthenticated, signOut } = useAuth()
+  const navigate = useNavigate()
   const [animateStats, setAnimateStats] = useState(false)
-  const mine = useMemo(() => alerts.filter(a => a.contributor === 'You'), [alerts])
+  
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate('/login')
+    }
+  }, [isAuthenticated, navigate])
+  
+  const mine = useMemo(() => alerts.filter(a => a.contributor === (user?.displayName || 'You')), [alerts, user])
   const totalReports = mine.length
   const verified = mine.filter(a => a.verified).length
   const contributionScore = mine.reduce((sum, a) => sum + (a.votesUp || 0), 0)
@@ -47,9 +62,17 @@ export default function Profile() {
         <div className="bg-white rounded-2xl shadow-xl p-8 mb-8 border border-gray-100">
           <div className="flex flex-col sm:flex-row items-center gap-6">
             <div className="relative">
-              <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg">
-                <AccountCircleIcon className="text-white" style={{ fontSize: 60 }} />
-              </div>
+              {user?.photoURL ? (
+                <img 
+                  src={user.photoURL} 
+                  alt={user.displayName || 'Profile'}
+                  className="w-24 h-24 rounded-full object-cover shadow-lg border-4 border-white"
+                />
+              ) : (
+                <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg">
+                  <AccountCircleIcon className="text-white" style={{ fontSize: 60 }} />
+                </div>
+              )}
               <div className="absolute -bottom-2 -right-2 bg-white rounded-full p-1 shadow-md">
                 <div className={`bg-gradient-to-br ${levelColor} rounded-full px-3 py-1 text-white text-xs font-bold`}>
                   {level}
@@ -58,13 +81,32 @@ export default function Profile() {
             </div>
             <div className="flex-1 text-center sm:text-left">
               <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
-                Road Guardian
+                {user?.displayName || 'Road Guardian'}
               </h1>
+              {user?.email && (
+                <div className="flex items-center justify-center sm:justify-start gap-2 text-gray-600 mb-2">
+                  <EmailIcon style={{ fontSize: 18 }} />
+                  <span className="text-sm">{user.email}</span>
+                </div>
+              )}
               <p className="text-gray-600 text-lg">Making roads safer, one report at a time</p>
               <div className="flex items-center justify-center sm:justify-start gap-2 mt-3">
                 <span className="text-2xl">{levelIcon}</span>
                 <span className="text-sm font-semibold text-gray-700">{level} Level Contributor</span>
               </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <button className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 transition-colors">
+                <EditIcon style={{ fontSize: 18 }} />
+                Edit Profile
+              </button>
+              <button 
+                onClick={signOut}
+                className="flex items-center gap-2 px-4 py-2 bg-red-50 hover:bg-red-100 rounded-lg text-red-600 transition-colors"
+              >
+                <LogoutIcon style={{ fontSize: 18 }} />
+                Sign Out
+              </button>
             </div>
           </div>
         </div>

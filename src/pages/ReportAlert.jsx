@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAlerts } from '../context/AlertsContext'
+import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../context/NotificationContext'
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
 import WarningIcon from '@mui/icons-material/Warning'
@@ -18,6 +19,7 @@ import PauseIcon from '@mui/icons-material/Pause'
 import AudiotrackIcon from '@mui/icons-material/Audiotrack'
 import EditLocationIcon from '@mui/icons-material/EditLocation'
 import MyLocationIcon from '@mui/icons-material/MyLocation'
+import GoogleIcon from '@mui/icons-material/Google'
 
 import AddPhotoAlternateIcon from '@mui/icons-material/AddPhotoAlternate'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
@@ -58,6 +60,7 @@ function LocationMarker({ position, setPosition }) {
 export default function ReportAlert() {
   const navigate = useNavigate()
   const { addAlert } = useAlerts()
+  const { user, isAuthenticated, signInWithGoogle } = useAuth()
   const { showToast } = useNotifications()
   const [form, setForm] = useState({
     type: '',
@@ -443,6 +446,13 @@ export default function ReportAlert() {
 
   const onSubmit = async (e) => {
     e.preventDefault()
+    
+    // Check if user is authenticated
+    if (!isAuthenticated) {
+      showToast('Please sign in to report hazards', 'warning', 5000)
+      return
+    }
+    
     setIsSubmitting(true)
     setTimeout(() => {
       addAlert({
@@ -452,7 +462,9 @@ export default function ReportAlert() {
         photos: form.photos,
         lat: form.lat,
         lng: form.lng,
-        contributor: 'You',
+        contributor: user?.displayName || 'Anonymous',
+        contributorId: user?.uid,
+        contributorEmail: user?.email,
         alternateRoutes: form.alternateRoutes,
         voiceNote: form.voiceNote
       })
@@ -468,6 +480,25 @@ export default function ReportAlert() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-red-50 py-8">
       <div className="max-w-4xl mx-auto p-4 sm:p-6">
+        {/* Login Prompt for Guests */}
+        {!isAuthenticated && (
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-6 mb-6">
+            <div className="flex flex-col sm:flex-row items-center gap-4">
+              <div className="flex-1 text-center sm:text-left">
+                <h3 className="text-lg font-semibold text-gray-800 mb-1">Sign in to Report Hazards</h3>
+                <p className="text-gray-600 text-sm">Join our community of road guardians and help keep roads safe</p>
+              </div>
+              <button
+                type="button"
+                onClick={signInWithGoogle}
+                className="flex items-center gap-2 px-6 py-3 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-all shadow-sm hover:shadow"
+              >
+                <GoogleIcon className="text-blue-500" style={{ fontSize: 20 }} />
+                <span className="font-medium text-gray-700">Sign in with Google</span>
+              </button>
+            </div>
+          </div>
+        )}
         {/* Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-orange-500 to-red-500 rounded-full shadow-xl mb-4">

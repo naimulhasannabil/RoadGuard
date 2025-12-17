@@ -1,118 +1,136 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import EmailIcon from '@mui/icons-material/Email'
-import LockIcon from '@mui/icons-material/Lock'
+import { Link, useNavigate } from 'react-router-dom'
+import LocationOnIcon from '@mui/icons-material/LocationOn'
+import GoogleIcon from '@mui/icons-material/Google'
+import MapIcon from '@mui/icons-material/Map'
 import SecurityIcon from '@mui/icons-material/Security'
-// import axios from 'axios'
+import DirectionsCarIcon from '@mui/icons-material/DirectionsCar'
+import { useAuth } from '../context/AuthContext'
 
 export default function Login() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState('')
+  const navigate = useNavigate()
+  const { signInWithGoogle } = useAuth()
 
-  const onSubmit = async (e) => {
-    e.preventDefault()
+  const handleGoogleSignIn = async () => {
     setIsLoading(true)
-    // TODO: Integrate with backend login endpoint
-    // const res = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/auth/login`, { email, password })
-    // localStorage.setItem('token', res.data.token)
-    setTimeout(() => {
-      setIsLoading(false)
-      alert('Login submitted (stub). Integrate with backend API.')
-    }, 1000)
+    setError('')
+    
+    const result = await signInWithGoogle()
+    
+    if (result.success) {
+      navigate('/')
+    } else {
+      setError(result.error || 'Sign in failed. Please try again.')
+    }
+    
+    setIsLoading(false)
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-600 flex items-center justify-center p-4">
       <div className="max-w-md w-full">
         {/* Logo/Brand Section */}
-        <div className="text-center mb-8 animate-fade-in">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-white rounded-full shadow-2xl mb-4">
-            <SecurityIcon className="text-blue-600" style={{ fontSize: 48 }} />
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-20 h-20 bg-white rounded-2xl shadow-2xl mb-4">
+            <LocationOnIcon className="text-emerald-600" style={{ fontSize: 48 }} />
           </div>
           <h1 className="text-4xl font-bold text-white mb-2">RoadGuard</h1>
-          <p className="text-blue-100 text-lg">Welcome back, Guardian!</p>
+          <p className="text-emerald-100 text-lg">Real-time Road Safety Alerts</p>
         </div>
 
-        {/* Login Form */}
-        <div className="bg-white rounded-3xl shadow-2xl p-8 backdrop-blur-lg bg-opacity-95">
-          <h2 className="text-3xl font-bold mb-6 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent text-center">
-            Sign In
+        {/* Login Card */}
+        <div className="bg-white rounded-3xl shadow-2xl p-8 backdrop-blur-lg">
+          <h2 className="text-2xl font-bold mb-2 text-slate-800 text-center">
+            Welcome Back!
           </h2>
-          
-          <form onSubmit={onSubmit} className="space-y-5">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Email Address</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <EmailIcon className="text-gray-400" />
-                </div>
-                <input
-                  type="email"
-                  placeholder="your@email.com"
-                  className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all outline-none"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
+          <p className="text-slate-500 text-center mb-6">
+            Sign in to report and view road alerts in your area
+          </p>
+
+          {/* Error Message */}
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm text-center">
+              {error}
+            </div>
+          )}
+
+          {/* Google Sign In Button */}
+          <button
+            onClick={handleGoogleSignIn}
+            disabled={isLoading}
+            className="w-full flex items-center justify-center gap-3 py-4 px-6 bg-white border-2 border-slate-200 rounded-xl font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+          >
+            {isLoading ? (
+              <div className="w-6 h-6 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <>
+                <GoogleIcon className="text-[#4285F4]" style={{ fontSize: 24 }} />
+                <span>Continue with Google</span>
+              </>
+            )}
+          </button>
+
+          {/* Divider */}
+          <div className="flex items-center gap-4 my-6">
+            <div className="flex-1 h-px bg-slate-200" />
+            <span className="text-slate-400 text-sm">Quick & Secure</span>
+            <div className="flex-1 h-px bg-slate-200" />
+          </div>
+
+          {/* Features */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 p-3 bg-emerald-50 rounded-xl">
+              <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
+                <MapIcon className="text-emerald-600" style={{ fontSize: 20 }} />
+              </div>
+              <div>
+                <p className="font-medium text-slate-700 text-sm">Live Map View</p>
+                <p className="text-xs text-slate-500">See real-time alerts on map</p>
               </div>
             </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Password</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <LockIcon className="text-gray-400" />
-                </div>
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all outline-none"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
+            <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-xl">
+              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                <SecurityIcon className="text-blue-600" style={{ fontSize: 20 }} />
+              </div>
+              <div>
+                <p className="font-medium text-slate-700 text-sm">Verified Reports</p>
+                <p className="text-xs text-slate-500">Community-verified alerts</p>
               </div>
             </div>
-
-            <div className="flex items-center justify-between text-sm">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                <span className="text-gray-600">Remember me</span>
-              </label>
-              <a href="#" className="text-blue-600 hover:text-blue-700 font-semibold">Forgot password?</a>
+            <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl">
+              <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
+                <DirectionsCarIcon className="text-amber-600" style={{ fontSize: 20 }} />
+              </div>
+              <div>
+                <p className="font-medium text-slate-700 text-sm">Smart Navigation</p>
+                <p className="text-xs text-slate-500">Avoid traffic & hazards</p>
+              </div>
             </div>
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <div className="w-5 h-5 border-3 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Signing in...
-                </span>
-              ) : (
-                'Sign In'
-              )}
-            </button>
-          </form>
-
-          <div className="mt-6 text-center">
-            <p className="text-gray-600">
-              Don't have an account?{' '}
-              <Link to="/signup" className="text-blue-600 hover:text-blue-700 font-semibold">
-                Sign up now
-              </Link>
-            </p>
           </div>
         </div>
 
-        {/* Footer Text */}
-        <p className="text-center text-blue-100 text-sm mt-6">
-          🛡️ Secured with end-to-end encryption
-        </p>
+        {/* Footer Links */}
+        <div className="mt-6 text-center">
+          <p className="text-emerald-100 text-sm">
+            By signing in, you agree to our{' '}
+            <a href="#" className="text-white underline hover:no-underline">Terms of Service</a>
+            {' '}and{' '}
+            <a href="#" className="text-white underline hover:no-underline">Privacy Policy</a>
+          </p>
+        </div>
+
+        {/* Continue as Guest */}
+        <div className="mt-4 text-center">
+          <Link 
+            to="/" 
+            className="inline-flex items-center gap-2 text-white hover:text-emerald-100 font-medium transition-colors"
+          >
+            <MapIcon style={{ fontSize: 18 }} />
+            Continue as Guest (View Only)
+          </Link>
+        </div>
       </div>
     </div>
   )

@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import { useAlerts, haversineMeters } from '../context/AlertsContext'
+import { useAuth } from '../context/AuthContext'
 import { NavigationPanel, RoutingMachine, LiveLocationTracker, MapClickHandler } from '../components/RouteNavigation'
 import { useNavigate } from 'react-router-dom'
+import LoginIcon from '@mui/icons-material/Login'
 import MyLocationIcon from '@mui/icons-material/MyLocation'
 import SearchIcon from '@mui/icons-material/Search'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
@@ -761,6 +763,7 @@ function SearchBar({ onSearch }) {
 export default function MapPage() {
   const navigate = useNavigate()
   const { alerts, voteAlert, userLocation, setUserLocation, setNearbyRadiusMeters, getCommentsForAlert, addCommentToAlert } = useAlerts()
+  const { user, isAuthenticated, signOut } = useAuth()
   const [center, setCenter] = useState([23.8103, 90.4125])
   const [filters, setFilters] = useState({ type: 'All', severity: 'All', verifiedOnly: false, maxDistance: 5000 })
   const [map, setMap] = useState(null)
@@ -782,7 +785,9 @@ export default function MapPage() {
   const [liveTrackingData, setLiveTrackingData] = useState(null)
   const [pickingMode, setPickingMode] = useState(null)
 
-  const userProfile = { name: 'Guest User', avatar: null }
+  const userProfile = isAuthenticated && user 
+    ? { name: user.name || user.email?.split('@')[0] || 'User', avatar: user.photoURL || null }
+    : { name: 'Guest', avatar: null }
 
   // Callbacks
   const handleRouteFound = useCallback((info) => setRouteInfo(info), [])
@@ -982,10 +987,25 @@ export default function MapPage() {
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="font-semibold text-slate-800 truncate">{userProfile.name}</h3>
-              <button onClick={() => { navigate('/profile'); closeSidebar(); }} className="text-sm text-slate-500 hover:text-slate-700 transition-colors">
-                View profile
-              </button>
+              {isAuthenticated ? (
+                <button onClick={() => { navigate('/profile'); closeSidebar(); }} className="text-sm text-slate-500 hover:text-slate-700 transition-colors">
+                  View profile
+                </button>
+              ) : (
+                <button onClick={() => { navigate('/login'); closeSidebar(); }} className="text-sm text-emerald-600 hover:text-emerald-700 font-medium transition-colors">
+                  Sign in with Google
+                </button>
+              )}
             </div>
+            {isAuthenticated && (
+              <button 
+                onClick={async () => { await signOut(); closeSidebar(); }} 
+                className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                title="Sign out"
+              >
+                <LogoutIcon style={{ fontSize: 20 }} />
+              </button>
+            )}
           </div>
         </div>
         
@@ -1149,10 +1169,17 @@ export default function MapPage() {
             <HelpOutlineIcon style={{ fontSize: 20 }} />
             <span className="text-sm font-medium">Help & Support</span>
           </button>
-          <button onClick={() => { navigate('/login'); closeSidebar(); }} className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-600 hover:bg-red-50 hover:text-red-600 transition-all active:scale-[0.98]">
-            <LogoutIcon style={{ fontSize: 20 }} />
-            <span className="text-sm font-medium">Sign out</span>
-          </button>
+          {isAuthenticated ? (
+            <button onClick={async () => { await signOut(); closeSidebar(); }} className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-600 hover:bg-red-50 hover:text-red-600 transition-all active:scale-[0.98]">
+              <LogoutIcon style={{ fontSize: 20 }} />
+              <span className="text-sm font-medium">Sign out</span>
+            </button>
+          ) : (
+            <button onClick={() => { navigate('/login'); closeSidebar(); }} className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-emerald-600 bg-emerald-50 hover:bg-emerald-100 transition-all active:scale-[0.98]">
+              <LoginIcon style={{ fontSize: 20 }} />
+              <span className="text-sm font-medium">Sign in with Google</span>
+            </button>
+          )}
         </div>
       </aside>
 
