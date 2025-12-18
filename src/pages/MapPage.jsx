@@ -760,7 +760,8 @@ export default function MapPage() {
   const navigate = useNavigate()
   const { alerts, voteAlert, userLocation, setUserLocation, setNearbyRadiusMeters, getCommentsForAlert, addCommentToAlert } = useAlerts()
   const { user, isAuthenticated, signOut } = useAuth()
-  const [center, setCenter] = useState([23.8103, 90.4125])
+  const [center, setCenter] = useState([23.8103, 90.4125]) // Default: Dhaka
+  const [locationPermission, setLocationPermission] = useState('prompt') // 'prompt' | 'granted' | 'denied'
   const [filters, setFilters] = useState({ type: 'All', severity: 'All', verifiedOnly: false, maxDistance: 5000 })
   const [map, setMap] = useState(null)
   const [showNavPanel, setShowNavPanel] = useState(false)
@@ -849,12 +850,13 @@ export default function MapPage() {
           watchIdRef.current = null
         }
         setLocating(false)
-        console.error('Geolocation error:', err.code, err.message)
         
         if (err.code === 1) {
-          alert('Location access denied. Please enable location permissions.')
+          setLocationPermission('denied')
+          // Don't use alert(), show a toast or in-app notification instead
+          console.log('Location permission denied')
         } else {
-          alert('Could not get location. Please try again.')
+          console.log('Could not get location:', err.message)
         }
       },
       { enableHighAccuracy: false, timeout: 30000, maximumAge: 30000 }
@@ -886,27 +888,40 @@ export default function MapPage() {
 
   useEffect(() => {
     if ('geolocation' in navigator) {
-      // Try with low accuracy first for faster response
+      // Check permission status first
+      navigator.permissions?.query({ name: 'geolocation' }).then((result) => {
+        setLocationPermission(result.state)
+        result.onchange = () => setLocationPermission(result.state)
+      }).catch(() => {})
+      
+      // Try to get location
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const c = [pos.coords.latitude, pos.coords.longitude]
           setCenter(c)
           setUserLocation({ lat: c[0], lng: c[1] })
           setNearbyRadiusMeters(5000)
+          setLocationPermission('granted')
         },
         (err) => {
-          console.log('Initial location failed, trying with lower accuracy...')
-          // Fallback with lower accuracy if high accuracy fails
-          navigator.geolocation.getCurrentPosition(
-            (pos) => {
-              const c = [pos.coords.latitude, pos.coords.longitude]
-              setCenter(c)
-              setUserLocation({ lat: c[0], lng: c[1] })
-              setNearbyRadiusMeters(5000)
-            },
-            () => console.log('Could not get location'),
-            { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
-          )
+          if (err.code === 1) {
+            // Permission denied
+            setLocationPermission('denied')
+            console.log('Location permission denied by user')
+          } else {
+            // Try with lower accuracy
+            navigator.geolocation.getCurrentPosition(
+              (pos) => {
+                const c = [pos.coords.latitude, pos.coords.longitude]
+                setCenter(c)
+                setUserLocation({ lat: c[0], lng: c[1] })
+                setNearbyRadiusMeters(5000)
+                setLocationPermission('granted')
+              },
+              () => console.log('Could not get location'),
+              { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+            )
+          }
         },
         { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
       )
@@ -1641,6 +1656,25 @@ export default function MapPage() {
 
         {/* Map */}
         <div className="absolute inset-0">
+          {/* Location Permission Banner */}
+          {locationPermission === 'denied' && (
+            <div className="absolute top-16 left-1/2 transform -translate-x-1/2 z-[1000] bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 shadow-lg max-w-sm mx-4">
+              <div className="flex items-start gap-3">
+                <div className="text-amber-500 text-xl">📍</div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-amber-800">Location access denied</p>
+                  <p className="text-xs text-amber-600 mt-1">Click the lock icon in the address bar and allow location access, then refresh.</p>
+                </div>
+                <button 
+                  onClick={() => setLocationPermission('prompt')}
+                  className="text-amber-400 hover:text-amber-600"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
+          
           <MapContainer center={center} zoom={13} style={{ height: '100%', width: '100%' }} zoomControl={false}>
             <MapController onMapReady={setMap} />
             <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
