@@ -79,16 +79,12 @@ const hazardLegend = [
   { type: 'Heavy Traffic Jam', filterType: 'Heavy Traffic Jam', color: '#9333ea' },
   { type: 'Accident', filterType: 'Accident', color: '#ef4444' },
   { type: 'Road Construction', filterType: 'Road Construction', color: '#f97316' },
-  { type: 'Road Closure', filterType: 'Road Closure', color: '#6b7280' },
   { type: 'Road Closures', filterType: 'Road Closures', color: '#6b7280' },
-  { type: 'Flooded Road', filterType: 'Flooded Road', color: '#3b82f6' },
   { type: 'Floods', filterType: 'Floods', color: '#3b82f6' },
-  { type: 'Pothole', filterType: 'Pothole', color: '#a855f7' },
   { type: 'Potholes', filterType: 'Potholes', color: '#a855f7' },
-  { type: 'Police Checkpoint', filterType: 'Police Checkpoints', color: '#8b5cf6' },
+  { type: 'Police Checkpoints', filterType: 'Police Checkpoints', color: '#8b5cf6' },
   { type: 'Broken Traffic Light', filterType: 'Broken Traffic Light', color: '#eab308' },
   { type: 'Broken Roads', filterType: 'Broken Roads', color: '#f97316' },
-  { type: 'Landslide', filterType: 'Landslides', color: '#78716c' },
   { type: 'Landslides', filterType: 'Landslides', color: '#78716c' },
   { type: 'Fire on Roadside', filterType: 'Fire on Roadside', color: '#dc2626' },
   { type: 'Animal Crossing', filterType: 'Animal Crossing', color: '#16a34a' },
@@ -890,6 +886,7 @@ export default function MapPage() {
 
   useEffect(() => {
     if ('geolocation' in navigator) {
+      // Try with low accuracy first for faster response
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const c = [pos.coords.latitude, pos.coords.longitude]
@@ -897,8 +894,21 @@ export default function MapPage() {
           setUserLocation({ lat: c[0], lng: c[1] })
           setNearbyRadiusMeters(5000)
         },
-        () => {},
-        { enableHighAccuracy: true, timeout: 5000 }
+        (err) => {
+          console.log('Initial location failed, trying with lower accuracy...')
+          // Fallback with lower accuracy if high accuracy fails
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              const c = [pos.coords.latitude, pos.coords.longitude]
+              setCenter(c)
+              setUserLocation({ lat: c[0], lng: c[1] })
+              setNearbyRadiusMeters(5000)
+            },
+            () => console.log('Could not get location'),
+            { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+          )
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
       )
     }
   }, [setUserLocation, setNearbyRadiusMeters])
