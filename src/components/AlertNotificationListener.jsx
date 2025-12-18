@@ -12,13 +12,11 @@ export default function AlertNotificationListener() {
   const hasRequestedPermission = useRef(false)
 
   useEffect(() => {
-    // Request notification permission on mount
     if (!hasRequestedPermission.current) {
       hasRequestedPermission.current = true
       requestPermission()
     }
 
-    // Listen for alerts from OTHER tabs only (dispatched by AlertsContext)
     const handleRemoteAlert = (event) => {
       const alert = event.detail
       if (alert) {

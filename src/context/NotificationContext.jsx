@@ -2,11 +2,6 @@ import { createContext, useContext, useState, useCallback, useEffect, useRef } f
 
 const NotificationContext = createContext(null)
 
-// BroadcastChannel for cross-tab communication
-const alertChannel = typeof window !== 'undefined' && 'BroadcastChannel' in window 
-  ? new BroadcastChannel('roadguard-alerts') 
-  : null
-
 // Notification sound (using Web Audio API for reliability)
 const createNotificationSound = () => {
   if (typeof window === 'undefined' || !window.AudioContext) return null
@@ -38,7 +33,8 @@ const createNotificationSound = () => {
 }
 
 export function NotificationProvider({ children }) {
-  const [notifications, setNotifications] = useState([])
+  const [notifications, setNotifications] = useState([]) // Persistent notification history for panel
+  const [toasts, setToasts] = useState([]) // Temporary toasts for popup display
   const [browserPermission, setBrowserPermission] = useState('default')
   const [soundEnabled, setSoundEnabled] = useState(true)
   const playSound = useRef(createNotificationSound())
@@ -104,21 +100,30 @@ export function NotificationProvider({ children }) {
     const id = Date.now() + Math.random()
     const notification = { id, message, type, timestamp: Date.now() }
     
-    setNotifications(prev => [...prev, notification])
+    // Add to persistent notifications (for panel)
+    setNotifications(prev => [notification, ...prev].slice(0, 50)) // Keep last 50
     
-    // Auto remove after duration
+    // Add to temporary toasts (for popup display)
+    setToasts(prev => [...prev, notification])
+    
+    // Auto remove toast after duration (but keep in notifications)
     if (duration > 0) {
       setTimeout(() => {
-        removeNotification(id)
+        setToasts(prev => prev.filter(n => n.id !== id))
       }, duration)
     }
     
     return id
   }, [])
 
-  // Remove a notification
+  // Remove a notification from the panel
   const removeNotification = useCallback((id) => {
     setNotifications(prev => prev.filter(n => n.id !== id))
+  }, [])
+
+  // Remove a toast (popup)
+  const removeToast = useCallback((id) => {
+    setToasts(prev => prev.filter(n => n.id !== id))
   }, [])
 
   // Clear all notifications
@@ -126,10 +131,13 @@ export function NotificationProvider({ children }) {
     setNotifications([])
   }, [])
 
-  // Notify about new hazard (both browser + in-app + sound)
-  const notifyNewHazard = useCallback((alert, isFromOtherTab = false) => {
-    const title = '🚨 New Hazard Reported!'
-    const body = `${alert.type} (${alert.severity})${isFromOtherTab ? ' - reported nearby' : ''}`
+  // Notify about new hazard from OTHER users (not your own alerts)
+  const notifyNewHazard = useCallback((alert, isFromOtherUser = true) => {
+    // Only show notifications for alerts from OTHER users
+    if (!isFromOtherUser) return
+    
+    const title = `📍 ${alert.type} Nearby`
+    const body = `${alert.severity} severity hazard reported by ${alert.contributor || 'another user'}`
     
     // Play notification sound
     if (soundEnabled && playSound.current) {
@@ -139,41 +147,47 @@ export function NotificationProvider({ children }) {
     // Show browser notification
     if (browserPermission === 'granted') {
       showBrowserNotification(title, body, {
-        tag: 'hazard-' + alert.id,
+        tag: 'hazard-' + (alert.id || alert.firebaseKey),
         data: { alertId: alert.id }
       })
     }
     
-    // Show in-app toast
+    // Show in-app toast with alert data for "tap to view"
     const toastType = alert.severity === 'High' ? 'error' : alert.severity === 'Medium' ? 'warning' : 'info'
-    showToast(`${title} ${body}`, toastType)
-  }, [browserPermission, showBrowserNotification, showToast, soundEnabled])
-
-  // Broadcast alert to other tabs
-  const broadcastAlert = useCallback((alert) => {
-    if (alertChannel) {
-      const broadcastData = {
-        ...alert,
-        photos: [], // Can't serialize File objects
-        voiceNote: null, // Can't serialize Blob URLs
-      }
-      alertChannel.postMessage({ type: 'NEW_ALERT', alert: broadcastData })
+    const message = `${alert.type} reported - ${alert.severity} severity`
+    
+    // Add to notifications with alert data
+    const id = Date.now() + Math.random()
+    const notification = { 
+      id, 
+      message, 
+      type: toastType, 
+      timestamp: Date.now(),
+      alertData: alert,  // Include alert data for "tap to view on map"
+      isHazardAlert: true
     }
-  }, [])
-
-  // Note: BroadcastChannel listening is handled by AlertNotificationListener component
-  // to avoid duplicate notifications
+    
+    setNotifications(prev => [notification, ...prev].slice(0, 50))
+    setToasts(prev => [...prev, notification])
+    
+    // Auto remove toast after 5 seconds
+    setTimeout(() => {
+      setToasts(prev => prev.filter(n => n.id !== id))
+    }, 5000)
+    
+  }, [browserPermission, showBrowserNotification, soundEnabled])
 
   const value = {
-    notifications,
+    notifications,       // Persistent list for notification panel
+    toasts,              // Temporary popups
     browserPermission,
     requestPermission,
     showBrowserNotification,
     showToast,
-    removeNotification,
+    removeNotification,  // Remove from panel
+    removeToast,         // Remove popup toast
     clearAll,
     notifyNewHazard,
-    broadcastAlert,
     soundEnabled,
     setSoundEnabled
   }
