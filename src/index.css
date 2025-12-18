@@ -202,6 +202,22 @@ html, body, #root {
   animation: gradient 3s ease infinite;
 }
 
+/* Notification Panel Animations */
+@keyframes slideUpPanel {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slideUpPanel {
+  animation: slideUpPanel 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
 /* Live tracking marker animation */
 @keyframes trackingPulse {
   0% {

@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, CircleMarker, Marker, Popup, useMap } from 're
 import L from 'leaflet'
 import { useAlerts, haversineMeters } from '../context/AlertsContext'
 import { useAuth } from '../context/AuthContext'
+import { useNotifications } from '../context/NotificationContext'
 import { NavigationPanel, RoutingMachine, LiveLocationTracker, MapClickHandler } from '../components/RouteNavigation'
 import { useNavigate } from 'react-router-dom'
 import LoginIcon from '@mui/icons-material/Login'
@@ -31,8 +32,13 @@ import TuneIcon from '@mui/icons-material/Tune'
 import HomeIcon from '@mui/icons-material/Home'
 import MapIcon from '@mui/icons-material/Map'
 import AddIcon from '@mui/icons-material/Add'
-// Modal-related icons (from main)
+import NotificationsIcon from '@mui/icons-material/Notifications'
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive'
+import DeleteSweepIcon from '@mui/icons-material/DeleteSweep'
+import VolumeOffIcon from '@mui/icons-material/VolumeOff'
+import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord'
 import LocationOnIcon from '@mui/icons-material/LocationOn'
+// Modal-related icons (from main)
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import ThumbUpIcon from '@mui/icons-material/ThumbUp'
 import ThumbDownIcon from '@mui/icons-material/ThumbDown'
@@ -679,6 +685,208 @@ function AlertDetailsModal({ alert, onClose, userLocation, voteAlert, comments, 
   )
 }
 
+// Notification Panel Component
+function NotificationPanel({ 
+  isOpen, 
+  onClose, 
+  notifications, 
+  alerts,
+  onClearAll, 
+  onRemove,
+  soundEnabled,
+  onSoundToggle,
+  browserPermission,
+  onRequestPermission,
+  onAlertClick
+}) {
+  // Filter notifications to only show hazard alerts from other users (not success messages)
+  const hazardNotifications = useMemo(() => {
+    return notifications.filter(n => n.isHazardAlert || n.alertData)
+  }, [notifications])
+
+  const formatTime = (timestamp) => {
+    const now = Date.now()
+    const diff = now - timestamp
+    if (diff < 60000) return 'Just now'
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
+    return new Date(timestamp).toLocaleDateString()
+  }
+
+  const getNotificationStyle = (notification) => {
+    const severity = notification.alertData?.severity || 
+      (notification.type === 'error' ? 'High' : notification.type === 'warning' ? 'Medium' : 'Low')
+    
+    if (severity === 'High') return { bg: 'bg-red-50', border: 'border-red-200', icon: '🚨', iconBg: 'bg-red-100' }
+    if (severity === 'Medium') return { bg: 'bg-amber-50', border: 'border-amber-200', icon: '⚠️', iconBg: 'bg-amber-100' }
+    return { bg: 'bg-emerald-50', border: 'border-emerald-200', icon: '📍', iconBg: 'bg-emerald-100' }
+  }
+
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 z-[2000] lg:absolute lg:inset-auto lg:top-16 lg:right-4 lg:w-96">
+      {/* Backdrop for mobile */}
+      <div 
+        className="absolute inset-0 bg-black/50 lg:hidden" 
+        onClick={onClose}
+      />
+      
+      {/* Panel */}
+      <div className={`
+        absolute bottom-0 left-0 right-0 max-h-[85vh] 
+        lg:relative lg:bottom-auto lg:left-auto lg:right-auto lg:max-h-[70vh]
+        bg-white rounded-t-3xl lg:rounded-2xl shadow-2xl 
+        flex flex-col overflow-hidden
+        animate-slideUp lg:animate-fadeIn
+      `}>
+        {/* Header */}
+        <div className="sticky top-0 bg-white border-b border-slate-100 px-4 py-4 z-10">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/30">
+                <NotificationsActiveIcon className="text-white" style={{ fontSize: 22 }} />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-800">Hazard Alerts</h3>
+                <p className="text-xs text-slate-500">{hazardNotifications.length} alerts from other users</p>
+              </div>
+            </div>
+            <button 
+              onClick={onClose}
+              className="p-2 hover:bg-slate-100 rounded-xl transition-colors"
+            >
+              <CloseIcon className="text-slate-500" style={{ fontSize: 22 }} />
+            </button>
+          </div>
+          
+          {/* Quick Actions */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onSoundToggle}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                soundEnabled 
+                  ? 'bg-emerald-100 text-emerald-700' 
+                  : 'bg-slate-100 text-slate-600'
+              }`}
+            >
+              {soundEnabled ? <VolumeUpIcon style={{ fontSize: 16 }} /> : <VolumeOffIcon style={{ fontSize: 16 }} />}
+              {soundEnabled ? 'Sound On' : 'Muted'}
+            </button>
+            
+            {browserPermission !== 'granted' && (
+              <button
+                onClick={onRequestPermission}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 transition-all"
+              >
+                <NotificationsIcon style={{ fontSize: 16 }} />
+                Enable Push
+              </button>
+            )}
+            
+            {hazardNotifications.length > 0 && (
+              <button
+                onClick={onClearAll}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all ml-auto"
+              >
+                <DeleteSweepIcon style={{ fontSize: 16 }} />
+                Clear All
+              </button>
+            )}
+          </div>
+        </div>
+        
+        {/* Notifications List */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {hazardNotifications.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
+                <NotificationsIcon className="text-slate-400" style={{ fontSize: 32 }} />
+              </div>
+              <p className="text-slate-600 font-medium">No hazard alerts yet</p>
+              <p className="text-sm text-slate-400 mt-1">You'll be notified when other users report hazards nearby</p>
+            </div>
+          ) : (
+            hazardNotifications.map((notification) => {
+              const style = getNotificationStyle(notification)
+              const alertData = notification.alertData
+              const severity = alertData?.severity || 'Low'
+              
+              return (
+                <div
+                  key={notification.id}
+                  onClick={() => alertData && onAlertClick?.(alertData)}
+                  className={`
+                    p-4 rounded-xl border ${style.bg} ${style.border}
+                    cursor-pointer hover:shadow-md
+                    transition-all group relative
+                  `}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`w-10 h-10 ${style.iconBg} rounded-xl flex items-center justify-center flex-shrink-0`}>
+                      <span className="text-lg">{style.icon}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-800 line-clamp-2">
+                        {notification.message}
+                      </p>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <span className="text-xs text-slate-500">{formatTime(notification.timestamp)}</span>
+                        <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                          severity === 'High' ? 'bg-red-100 text-red-600' :
+                          severity === 'Medium' ? 'bg-amber-100 text-amber-600' :
+                          'bg-emerald-100 text-emerald-600'
+                        }`}>
+                          {severity}
+                        </span>
+                      </div>
+                      {alertData && (
+                        <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                          <LocationOnIcon style={{ fontSize: 12 }} />
+                          Tap to view on map
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onRemove(notification.id) }}
+                      className="p-1.5 hover:bg-white/50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                    >
+                      <CloseIcon style={{ fontSize: 16 }} className="text-slate-400" />
+                    </button>
+                  </div>
+                  
+                  {/* New indicator for recent items */}
+                  {notification.timestamp > Date.now() - 60000 && (
+                    <div className="absolute top-3 right-3">
+                      <FiberManualRecordIcon className="text-emerald-500 animate-pulse" style={{ fontSize: 10 }} />
+                    </div>
+                  )}
+                </div>
+              )
+            })
+          )}
+        </div>
+        
+        {/* Footer - Quick Stats */}
+        {hazardNotifications.length > 0 && (
+          <div className="border-t border-slate-100 px-4 py-3 bg-slate-50">
+            <div className="flex items-center justify-between text-xs text-slate-500">
+              <span>
+                {hazardNotifications.filter(n => n.alertData?.severity === 'High').length} high priority alerts
+              </span>
+              <span className="flex items-center gap-1">
+                <FiberManualRecordIcon className="text-emerald-500" style={{ fontSize: 8 }} />
+                Live updates via Firebase
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // Search Component (from Arafath)
 function SearchBar({ onSearch }) {
   const [query, setQuery] = useState('')
@@ -760,6 +968,7 @@ export default function MapPage() {
   const navigate = useNavigate()
   const { alerts, voteAlert, userLocation, setUserLocation, setNearbyRadiusMeters, getCommentsForAlert, addCommentToAlert } = useAlerts()
   const { user, isAuthenticated, signOut } = useAuth()
+  const { notifications, clearAll, removeNotification, soundEnabled, setSoundEnabled, browserPermission, requestPermission } = useNotifications()
   const [center, setCenter] = useState([23.8103, 90.4125]) // Default: Dhaka
   const [locationPermission, setLocationPermission] = useState('prompt') // 'prompt' | 'granted' | 'denied'
   const [filters, setFilters] = useState({ type: 'All', severity: 'All', verifiedOnly: false, maxDistance: 5000 })
@@ -767,6 +976,7 @@ export default function MapPage() {
   const [showNavPanel, setShowNavPanel] = useState(false)
   const [showFilters, setShowFilters] = useState(true)
   const [selectedAlert, setSelectedAlert] = useState(null) // For alert details modal
+  const [showNotificationPanel, setShowNotificationPanel] = useState(false) // Notification panel state
   
   // Menu state
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
@@ -1101,13 +1311,21 @@ export default function MapPage() {
                 </div>
                 <button
                   onClick={() => setFilters(f => ({ ...f, verifiedOnly: !f.verifiedOnly }))}
-                  className={`w-12 h-7 rounded-full transition-all duration-300 relative ${
-                    filters.verifiedOnly ? 'bg-emerald-500' : 'bg-slate-300'
+                  className={`w-11 h-6 rounded-full transition-all duration-300 relative ${
+                    filters.verifiedOnly 
+                      ? 'bg-gradient-to-r from-emerald-500 to-teal-500 shadow-lg shadow-emerald-500/30' 
+                      : 'bg-slate-200'
                   }`}
                 >
-                  <span className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow-md transition-transform duration-300 ${
-                    filters.verifiedOnly ? 'translate-x-6' : 'translate-x-1'
-                  }`}></span>
+                  <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-all duration-300 flex items-center justify-center ${
+                    filters.verifiedOnly ? 'translate-x-5' : 'translate-x-0.5'
+                  }`}>
+                    {filters.verifiedOnly && (
+                      <svg className="text-emerald-500 w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </span>
                 </button>
               </div>
 
@@ -1225,13 +1443,39 @@ export default function MapPage() {
               </div>
               <span className="text-lg font-bold text-slate-800">Road<span className="text-emerald-600">Guard</span></span>
             </div>
-            <button
-              onClick={() => navigate('/emergency')}
-              className="px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl transition-all active:scale-95 flex items-center gap-1.5"
-            >
-              <SosIcon style={{ fontSize: 16 }} />
-              <span className="text-xs font-bold">SOS</span>
-            </button>
+            
+            {/* Right: Notification Bell + SOS */}
+            <div className="flex items-center gap-2">
+              {/* Notification Bell */}
+              <button
+                onClick={() => setShowNotificationPanel(!showNotificationPanel)}
+                className={`relative w-10 h-10 rounded-xl transition-all active:scale-95 flex items-center justify-center ${
+                  showNotificationPanel 
+                    ? 'bg-emerald-500 text-white' 
+                    : 'bg-slate-100 text-slate-700'
+                }`}
+              >
+                {showNotificationPanel ? (
+                  <NotificationsActiveIcon style={{ fontSize: 20 }} />
+                ) : (
+                  <NotificationsIcon style={{ fontSize: 20 }} />
+                )}
+                {notifications.length > 0 && !showNotificationPanel && (
+                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-white text-[10px] font-bold flex items-center justify-center shadow-lg animate-pulse">
+                    {notifications.length > 9 ? '9+' : notifications.length}
+                  </span>
+                )}
+              </button>
+              
+              {/* SOS Button */}
+              <button
+                onClick={() => navigate('/emergency')}
+                className="px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl transition-all active:scale-95 flex items-center gap-1.5"
+              >
+                <SosIcon style={{ fontSize: 16 }} />
+                <span className="text-xs font-bold">SOS</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1265,14 +1509,39 @@ export default function MapPage() {
                 <SearchBar onSearch={handleSearchSelect} />
               </div>
             </div>
-            {/* Right: SOS */}
-            <button
-              onClick={() => navigate('/emergency')}
-              className="px-5 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl transition-all flex items-center gap-2 shadow-lg hover:shadow-xl active:scale-95"
-            >
-              <SosIcon style={{ fontSize: 18 }} />
-              <span className="text-sm font-bold">SOS</span>
-            </button>
+            {/* Right: Notification & SOS */}
+            <div className="flex items-center gap-3">
+              {/* Notification Bell */}
+              <button
+                onClick={() => setShowNotificationPanel(!showNotificationPanel)}
+                className={`relative p-3 rounded-xl transition-all shadow-lg border ${
+                  showNotificationPanel 
+                    ? 'bg-emerald-500 text-white border-emerald-500 hover:bg-emerald-600' 
+                    : 'bg-white text-slate-700 border-slate-200 hover:shadow-xl hover:border-emerald-200'
+                }`}
+              >
+                {showNotificationPanel ? (
+                  <NotificationsActiveIcon style={{ fontSize: 22 }} />
+                ) : (
+                  <NotificationsIcon style={{ fontSize: 22 }} />
+                )}
+                {/* Unread Badge */}
+                {notifications.length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-white text-xs font-bold flex items-center justify-center shadow-lg animate-pulse">
+                    {notifications.length > 9 ? '9+' : notifications.length}
+                  </span>
+                )}
+              </button>
+              
+              {/* SOS Button */}
+              <button
+                onClick={() => navigate('/emergency')}
+                className="px-5 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl transition-all flex items-center gap-2 shadow-lg hover:shadow-xl active:scale-95"
+              >
+                <SosIcon style={{ fontSize: 18 }} />
+                <span className="text-sm font-bold">SOS</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1807,6 +2076,26 @@ export default function MapPage() {
           onAddComment={(comment) => addCommentToAlert(selectedAlert.id, comment)}
         />
       )}
+      
+      {/* Notification Panel */}
+      <NotificationPanel
+        isOpen={showNotificationPanel}
+        onClose={() => setShowNotificationPanel(false)}
+        notifications={notifications}
+        alerts={alerts}
+        onClearAll={clearAll}
+        onRemove={removeNotification}
+        soundEnabled={soundEnabled}
+        onSoundToggle={() => setSoundEnabled(!soundEnabled)}
+        browserPermission={browserPermission}
+        onRequestPermission={requestPermission}
+        onAlertClick={(alertData) => {
+          setShowNotificationPanel(false)
+          if (alertData?.lat && alertData?.lng && map) {
+            map.flyTo([alertData.lat, alertData.lng], 16, { duration: 0.8 })
+          }
+        }}
+      />
     </div>
   )
 }

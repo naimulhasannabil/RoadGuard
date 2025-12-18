@@ -1541,16 +1541,28 @@ function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettings
                   { key: 'highPriorityOnly', label: 'High Priority Only', icon: '🚨' },
                   { key: 'soundEnabled', label: 'Sound Alerts', icon: '🔊' }
                 ].map(({ key, label, icon }) => (
-                  <div key={key} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                  <div key={key} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
                     <div className="flex items-center gap-2">
                       <span>{icon}</span>
                       <span className="font-medium text-slate-700 text-sm">{label}</span>
                     </div>
                     <button
                       onClick={() => setNotificationSettings(prev => ({ ...prev, [key]: !prev[key] }))}
-                      className={`relative w-10 h-6 rounded-full transition-all ${notificationSettings[key] ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                      className={`relative w-11 h-6 rounded-full transition-all duration-300 ${
+                        notificationSettings[key] 
+                          ? 'bg-gradient-to-r from-emerald-500 to-teal-500 shadow-lg shadow-emerald-500/30' 
+                          : 'bg-slate-200'
+                      }`}
                     >
-                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${notificationSettings[key] ? 'left-5' : 'left-1'}`} />
+                      <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-all duration-300 flex items-center justify-center ${
+                        notificationSettings[key] ? 'translate-x-5' : 'translate-x-0.5'
+                      }`}>
+                        {notificationSettings[key] && (
+                          <svg className="text-emerald-500 w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
                     </button>
                   </div>
                 ))}
@@ -1600,16 +1612,28 @@ function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettings
                   { key: 'showThumbnails', label: 'Show Thumbnails', icon: '🖼️' },
                   { key: 'autoRefresh', label: 'Auto Refresh', icon: '🔄' }
                 ].map(({ key, label, icon }) => (
-                  <div key={key} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                  <div key={key} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
                     <div className="flex items-center gap-2">
                       <span>{icon}</span>
                       <span className="font-medium text-slate-700 text-sm">{label}</span>
                     </div>
                     <button
                       onClick={() => setDisplaySettings(prev => ({ ...prev, [key]: !prev[key] }))}
-                      className={`relative w-10 h-6 rounded-full transition-all ${displaySettings[key] ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                      className={`relative w-11 h-6 rounded-full transition-all duration-300 ${
+                        displaySettings[key] 
+                          ? 'bg-gradient-to-r from-purple-500 to-pink-500 shadow-lg shadow-purple-500/30' 
+                          : 'bg-slate-200'
+                      }`}
                     >
-                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${displaySettings[key] ? 'left-5' : 'left-1'}`} />
+                      <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-all duration-300 flex items-center justify-center ${
+                        displaySettings[key] ? 'translate-x-5' : 'translate-x-0.5'
+                      }`}>
+                        {displaySettings[key] && (
+                          <svg className="text-purple-500 w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
                     </button>
                   </div>
                 ))}
@@ -1687,16 +1711,28 @@ function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettings
                   { key: 'profanityFilter', label: 'Profanity Filter', icon: '🤬' },
                   { key: 'spamDetection', label: 'Spam Detection', icon: '🛡️' }
                 ].map(({ key, label, icon }) => (
-                  <div key={key} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                  <div key={key} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
                     <div className="flex items-center gap-2">
                       <span>{icon}</span>
                       <span className="font-medium text-slate-700 text-sm">{label}</span>
                     </div>
                     <button
                       onClick={() => setModerationSettings(prev => ({ ...prev, [key]: !prev[key] }))}
-                      className={`relative w-10 h-6 rounded-full transition-all ${moderationSettings[key] ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                      className={`relative w-11 h-6 rounded-full transition-all duration-300 ${
+                        moderationSettings[key] 
+                          ? 'bg-gradient-to-r from-amber-500 to-orange-500 shadow-lg shadow-amber-500/30' 
+                          : 'bg-slate-200'
+                      }`}
                     >
-                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${moderationSettings[key] ? 'left-5' : 'left-1'}`} />
+                      <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-all duration-300 flex items-center justify-center ${
+                        moderationSettings[key] ? 'translate-x-5' : 'translate-x-0.5'
+                      }`}>
+                        {moderationSettings[key] && (
+                          <svg className="text-amber-500 w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
                     </button>
                   </div>
                 ))}
