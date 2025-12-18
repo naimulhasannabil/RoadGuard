@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="pinGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#10B981"/>
+      <stop offset="50%" style="stop-color:#059669"/>
+      <stop offset="100%" style="stop-color:#0D9488"/>
+    </linearGradient>
+  </defs>
+  <!-- Location Pin - matching MapPage logo -->
+  <path d="M50 5 C25 5 10 22 10 42 C10 68 50 95 50 95 C50 95 90 68 90 42 C90 22 75 5 50 5 Z" 
+        fill="url(#pinGrad)"/>
+  <!-- Inner white circle with hole (like the map pin icon) -->
+  <circle cx="50" cy="38" r="18" fill="white"/>
+  <circle cx="50" cy="38" r="9" fill="url(#pinGrad)"/>
+</svg>
