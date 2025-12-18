@@ -53,17 +53,12 @@ export function GeoFenceProvider({ children }) {
         setIsTracking(true)
       },
       (error) => {
-        // Only log non-timeout errors to reduce console noise
-        if (error.code !== error.TIMEOUT) {
-          console.warn('Geolocation warning:', error.message)
-        }
-        
-        // Don't stop tracking on temporary errors
+        // Handle permission denied silently (user already sees UI feedback)
         if (error.code === error.PERMISSION_DENIED) {
           setIsTracking(false)
-          showToast('Location permission denied. Enable it for hazard alerts.', 'warning')
+          // Don't show toast - MapPage shows a banner instead
         }
-        // For other errors, silently retry (watchPosition will keep trying)
+        // Silently handle other errors (timeout, unavailable) - watchPosition will retry
       },
       {
         enableHighAccuracy: false, // Use low accuracy for faster response
