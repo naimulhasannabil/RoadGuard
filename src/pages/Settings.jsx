@@ -942,14 +942,20 @@ function ToggleItem({ icon, iconBg, iconColor, label, description, enabled, onTo
       </div>
       <button
         onClick={onToggle}
-        className={`w-12 sm:w-14 h-7 sm:h-8 rounded-full transition-all duration-300 relative shrink-0 ml-2 ${
-          enabled ? 'bg-gradient-to-r from-emerald-500 to-teal-500 shadow-lg shadow-emerald-500/30' : 'bg-slate-200'
+        className={`w-11 h-6 rounded-full transition-all duration-300 relative shrink-0 ml-2 ${
+          enabled 
+            ? 'bg-gradient-to-r from-emerald-500 to-teal-500 shadow-lg shadow-emerald-500/30' 
+            : 'bg-slate-200'
         }`}
       >
-        <div className={`absolute top-0.5 sm:top-1 w-6 h-6 bg-white rounded-full shadow-md transition-all duration-300 flex items-center justify-center ${
-          enabled ? 'translate-x-5 sm:translate-x-7' : 'translate-x-0.5 sm:translate-x-1'
+        <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-all duration-300 flex items-center justify-center ${
+          enabled ? 'translate-x-5' : 'translate-x-0.5'
         }`}>
-          {enabled && <CheckCircleIcon className="text-emerald-500" style={{ fontSize: 18 }} />}
+          {enabled && (
+            <svg className="text-emerald-500 w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          )}
         </div>
       </button>
     </div>

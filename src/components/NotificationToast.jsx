@@ -29,13 +29,13 @@ const typeStyles = {
 }
 
 export default function NotificationToast() {
-  const { notifications, removeNotification } = useNotifications()
+  const { toasts, removeToast } = useNotifications()
 
-  if (notifications.length === 0) return null
+  if (!toasts || toasts.length === 0) return null
 
   return (
     <div className="fixed top-20 right-4 z-[9999] flex flex-col gap-3 max-w-sm">
-      {notifications.map((notification) => {
+      {toasts.map((notification) => {
         const style = typeStyles[notification.type] || typeStyles.info
         const Icon = style.icon
 
@@ -55,7 +55,7 @@ export default function NotificationToast() {
               </p>
             </div>
             <button
-              onClick={() => removeNotification(notification.id)}
+              onClick={() => removeToast(notification.id)}
               className="flex-shrink-0 p-1 hover:bg-white/20 rounded-full transition-colors"
             >
               <CloseIcon style={{ fontSize: 18 }} />

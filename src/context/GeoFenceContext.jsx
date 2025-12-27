@@ -53,25 +53,17 @@ export function GeoFenceProvider({ children }) {
         setIsTracking(true)
       },
       (error) => {
-        console.error('Geolocation error:', error)
-        setIsTracking(false)
-        
-        switch (error.code) {
-          case error.PERMISSION_DENIED:
-            showToast('Location permission denied. Enable it for hazard alerts.', 'warning')
-            break
-          case error.POSITION_UNAVAILABLE:
-            showToast('Location unavailable. Check your GPS settings.', 'warning')
-            break
-          case error.TIMEOUT:
-            showToast('Location request timed out. Retrying...', 'info')
-            break
+        // Handle permission denied silently (user already sees UI feedback)
+        if (error.code === error.PERMISSION_DENIED) {
+          setIsTracking(false)
+          // Don't show toast - MapPage shows a banner instead
         }
+        // Silently handle other errors (timeout, unavailable) - watchPosition will retry
       },
       {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 5000
+        enableHighAccuracy: false, // Use low accuracy for faster response
+        timeout: 15000,            // Longer timeout
+        maximumAge: 60000          // Accept cached positions up to 1 minute old
       }
     )
 

@@ -1,11 +1,11 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
+import { broadcastAlert, addAlertListener } from '../utils/alertBroadcast'
+import alertService from '../services/alertService'
 
 const AlertsContext = createContext(null)
 
-// BroadcastChannel for cross-tab alert sync
-const alertChannel = typeof window !== 'undefined' && 'BroadcastChannel' in window
-  ? new BroadcastChannel('roadguard-alerts')
-  : null
+// Backend connection status
+const API_ENABLED = import.meta.env.VITE_API_ENABLED === 'true'
 
 const DEFAULT_TTL_MINUTES = {
   Low: 30,
@@ -28,67 +28,165 @@ function haversineMeters(lat1, lon1, lat2, lon2) {
 
 export function AlertsProvider({ children }) {
   const [alerts, setAlerts] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
   const [userLocation, setUserLocation] = useState(null) // { lat, lng }
   const [nearbyRadiusMeters, setNearbyRadiusMeters] = useState(500)
   const [severityTtl, setSeverityTtl] = useState(DEFAULT_TTL_MINUTES)
   const lastAlertId = useRef(0)
   
-  // Track locally created alert IDs to avoid showing notifications for own alerts
-  const localAlertIds = useRef(new Set())
+  // Track locally created alert timestamps to avoid showing notifications for own alerts
+  const localAlertTimestamps = useRef(new Set())
   
   // Callback to notify about new alerts (set by App component)
   const onNewAlertRef = useRef(null)
   
   // Store comments by alert ID - persists across page navigation
   const [alertComments, setAlertComments] = useState({})
+
+  // Fetch alerts from PostgreSQL backend on mount
+  const fetchAlerts = useCallback(async () => {
+    if (!API_ENABLED) return
+    
+    setLoading(true)
+    setError(null)
+    
+    try {
+      const result = await alertService.getAllAlerts()
+      if (result.success && result.data) {
+        // Merge with existing alerts, avoiding duplicates
+        setAlerts(prev => {
+          const existingIds = new Set(prev.map(a => a.id))
+          const newAlerts = (result.data.alerts || result.data || [])
+            .filter(a => !existingIds.has(a.id))
+          return [...newAlerts, ...prev]
+        })
+      } else {
+        console.warn('Failed to fetch alerts:', result.error)
+      }
+    } catch (err) {
+      console.error('Error fetching alerts:', err)
+      setError('Failed to load alerts')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  // Fetch nearby alerts based on user location
+  const fetchNearbyAlerts = useCallback(async (lat, lng, radius = 5000) => {
+    if (!API_ENABLED) return
+    
+    try {
+      const result = await alertService.getNearbyAlerts(lat, lng, radius)
+      if (result.success && result.data) {
+        setAlerts(prev => {
+          const existingIds = new Set(prev.map(a => a.id))
+          const newAlerts = (result.data.alerts || result.data || [])
+            .filter(a => !existingIds.has(a.id))
+          return [...newAlerts, ...prev]
+        })
+      }
+    } catch (err) {
+      console.error('Error fetching nearby alerts:', err)
+    }
+  }, [])
+
+  // Load alerts from backend on mount
+  useEffect(() => {
+    fetchAlerts()
+  }, [fetchAlerts])
   
-  const getCommentsForAlert = (alertId) => {
-    return alertComments[alertId] || [
-      // Default placeholder comments for demo
-      { id: 1, author: 'Traffic Officer', text: 'Confirmed. Crew dispatched to location.', time: '5 mins ago', isOfficial: true },
-      { id: 2, author: 'Local Driver', text: 'Still blocked as of now. Take the alternate route via Ring Road.', time: '12 mins ago', isOfficial: false },
-    ]
-  }
+  const getCommentsForAlert = useCallback((alertId) => {
+    return alertComments[alertId] || []
+  }, [alertComments])
   
-  const addCommentToAlert = (alertId, comment) => {
+  // Add comment to alert - saves to backend when enabled
+  const addCommentToAlert = useCallback(async (alertId, comment) => {
+    // Add to local state immediately (optimistic update)
     setAlertComments(prev => {
-      const existingComments = prev[alertId] || getCommentsForAlert(alertId)
+      const existingComments = prev[alertId] || []
       return {
         ...prev,
         [alertId]: [comment, ...existingComments]
       }
     })
-  }
-
-  // Listen for alerts from other tabs via BroadcastChannel
-  useEffect(() => {
-    if (!alertChannel) return
     
-    const handleMessage = (event) => {
-      const { type, alert } = event.data
-      if (type === 'NEW_ALERT' && alert && alert.id) {
-        // Skip if this is our own alert
-        if (localAlertIds.current.has(alert.id)) {
+    // Save to backend when enabled
+    if (API_ENABLED) {
+      try {
+        await alertService.addComment(alertId, comment.text)
+      } catch (err) {
+        console.error('Failed to save comment to backend:', err)
+      }
+    }
+  }, [])
+
+  // Fetch comments for an alert from backend
+  const fetchCommentsForAlert = useCallback(async (alertId) => {
+    if (!API_ENABLED) return
+    
+    try {
+      const result = await alertService.getComments(alertId)
+      if (result.success && result.data) {
+        setAlertComments(prev => ({
+          ...prev,
+          [alertId]: result.data.comments || result.data || []
+        }))
+      }
+    } catch (err) {
+      console.error('Failed to fetch comments:', err)
+    }
+  }, [])
+
+  // Listen for alerts from other users via Firebase (real-time notifications)
+  useEffect(() => {
+    const handleAlert = async (data) => {
+      const { type, alert } = data
+      
+      if (type === 'NEW_ALERT' && alert) {
+        // Check if this is our own alert by matching createdAt timestamp
+        const alertCreatedAt = alert.createdAt || 0
+        const isOwnAlert = localAlertTimestamps.current.has(alertCreatedAt)
+        
+        if (isOwnAlert) {
+          // Own alert - already added locally, just update firebaseKey
+          setAlerts((prev) => {
+            return prev.map(a => 
+              a.createdAt === alertCreatedAt 
+                ? { ...a, firebaseKey: alert.firebaseKey, backendId: alert.backendId }
+                : a
+            )
+          })
           return
         }
         
-        setAlerts((prev) => {
-          // Avoid duplicates
-          if (prev.some(a => a.id === alert.id)) {
-            return prev
+        // Alert from another user
+        let fullAlert = alert
+        
+        // If backend is enabled, fetch full alert details (with photos, voice, etc.)
+        if (API_ENABLED && alert.backendId) {
+          try {
+            const result = await alertService.getAlertById(alert.backendId)
+            if (result.success && result.data) {
+              fullAlert = { ...alert, ...result.data }
+            }
+          } catch (err) {
+            console.error('Failed to fetch full alert details:', err)
           }
-          return [alert, ...prev]
+        }
+        
+        // Add to list
+        setAlerts((prev) => {
+          if (prev.some(a => a.id === alert.id || a.firebaseKey === alert.firebaseKey || a.createdAt === alert.createdAt)) return prev
+          return [fullAlert, ...prev]
         })
         
-        // Dispatch event for notification listener (only for alerts from OTHER tabs)
-        window.dispatchEvent(new CustomEvent('roadguard-remote-alert', { detail: alert }))
+        // Trigger notification for alerts from OTHER users only
+        window.dispatchEvent(new CustomEvent('roadguard-remote-alert', { detail: fullAlert }))
       }
     }
     
-    alertChannel.onmessage = handleMessage
-    return () => {
-      alertChannel.onmessage = null
-    }
+    return addAlertListener(handleAlert)
   }, [])
 
   // Auto-expire and verify alerts based on TTL and votes
@@ -138,14 +236,16 @@ export function AlertsProvider({ children }) {
     }
   }
 
-  const addAlert = ({ type, severity, description, photos, lat, lng, contributor = 'You', voiceNote = null, alternateRoutes = [] }) => {
+  const addAlert = async ({ type, severity, description, photos, lat, lng, contributor = 'You', voiceNote = null, alternateRoutes = [] }) => {
     const id = ++lastAlertId.current
+    const createdAt = Date.now()
+    
+    // Create local blob URLs for immediate display
     const photoObjs = (photos || []).map((f) => ({
       name: f.name,
       url: URL.createObjectURL(f),
     }))
     
-    // Convert voiceNote Blob to URL if it exists
     let voiceNoteUrl = null
     if (voiceNote && voiceNote instanceof Blob) {
       voiceNoteUrl = URL.createObjectURL(voiceNote)
@@ -168,25 +268,44 @@ export function AlertsProvider({ children }) {
       verified: false,
       voiceNote: voiceNoteUrl,
       alternateRoutes: alternateRoutes || [],
+      createdAt,
     }
     
-    // Track this as a local alert so we don't show notification for it
-    localAlertIds.current.add(id)
+    // Track createdAt to identify own alerts when they come back from Firebase
+    localAlertTimestamps.current.add(createdAt)
     
+    // Add to local state immediately (optimistic update)
     setAlerts((prev) => [alert, ...prev])
     
-    // Broadcast to other tabs
-    if (alertChannel) {
-      // Create a serializable version (no Blob URLs)
-      const broadcastAlert = {
-        ...alert,
-        photos: [], // Can't serialize blob URLs
-        voiceNote: null, // Can't serialize blob URLs
+    let backendId = null
+    
+    // Save to PostgreSQL backend (if enabled) - this stores photos/voice with real URLs
+    if (API_ENABLED) {
+      try {
+        const alertData = { type, severity, description, lat, lng, contributor, createdAt }
+        const result = photos?.length || voiceNote
+          ? await alertService.createAlertWithFiles(alertData, photos || [], voiceNote)
+          : await alertService.createAlert(alertData)
+        
+        if (result.success && result.data) {
+          backendId = result.data.id
+          // Update local alert with backend data (includes real media URLs)
+          setAlerts((prev) => prev.map(a => 
+            a.createdAt === createdAt 
+              ? { ...a, ...result.data, backendId: result.data.id, photos: result.data.photos || photoObjs, voiceNote: result.data.voiceNote || voiceNoteUrl }
+              : a
+          ))
+        }
+      } catch (err) {
+        console.error('Failed to save alert to backend:', err)
       }
-      alertChannel.postMessage({ type: 'NEW_ALERT', alert: broadcastAlert })
     }
     
-    // Show browser notification if nearby
+    // Broadcast to other users via Firebase (real-time notification)
+    // Include backendId so other users can fetch full details
+    broadcastAlert({ ...alert, backendId })
+    
+    // Show browser notification if nearby (geofence)
     notifyIfNearby(alert)
     
     // Trigger notification callback if set
@@ -197,7 +316,8 @@ export function AlertsProvider({ children }) {
     return alert
   }
 
-  const voteAlert = (id, delta) => {
+  const voteAlert = async (id, delta) => {
+    // Optimistic update
     setAlerts((prev) =>
       prev.map((a) => {
         if (a.id !== id) return a
@@ -207,18 +327,48 @@ export function AlertsProvider({ children }) {
         return { ...a, votesUp, votesDown, verified: score >= 3 }
       })
     )
+    
+    // Sync with backend
+    if (API_ENABLED) {
+      try {
+        await alertService.voteAlert(id, delta > 0 ? 'up' : 'down')
+      } catch (err) {
+        console.error('Failed to sync vote with backend:', err)
+      }
+    }
   }
 
-  const updateAlert = (id, patch) => {
+  const updateAlert = async (id, patch) => {
     setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)))
+    
+    if (API_ENABLED) {
+      try {
+        await alertService.updateAlert(id, patch)
+      } catch (err) {
+        console.error('Failed to update alert in backend:', err)
+      }
+    }
   }
 
-  const removeAlert = (id) => {
+  const removeAlert = async (id) => {
     setAlerts((prev) => prev.filter((a) => a.id !== id))
+    
+    if (API_ENABLED) {
+      try {
+        await alertService.deleteAlert(id)
+      } catch (err) {
+        console.error('Failed to delete alert from backend:', err)
+      }
+    }
   }
 
   const reloadAlerts = () => {
-    setAlerts((prev) => [...prev])
+    // Refetch from backend if enabled
+    if (API_ENABLED) {
+      fetchAlerts()
+    } else {
+      setAlerts((prev) => [...prev])
+    }
   }
   
   const setOnNewAlert = (callback) => {
@@ -245,6 +395,13 @@ export function AlertsProvider({ children }) {
     alertComments,
     getCommentsForAlert,
     addCommentToAlert,
+    fetchCommentsForAlert,
+    // Backend integration
+    loading,
+    error,
+    fetchAlerts,
+    fetchNearbyAlerts,
+    isBackendEnabled: API_ENABLED,
   }
 
   return <AlertsContext.Provider value={value}>{children}</AlertsContext.Provider>
