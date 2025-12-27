@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAlerts } from '../context/AlertsContext'
+import { useAuth } from '../context/AuthContext'
 
 // Icons
 import DashboardIcon from '@mui/icons-material/Dashboard'
@@ -61,6 +62,9 @@ const getTimeAgo = (date) => {
 }
 
 export default function AdminDashboard() {
+  const navigate = useNavigate()
+  const { user, isAuthenticated, signOut, loading: authLoading } = useAuth()
+  
   const ctx = useAlerts()
   const alerts = ctx?.alerts || []
   const setAlerts = ctx?.setAlerts
@@ -76,15 +80,148 @@ export default function AdminDashboard() {
   const [playingAudio, setPlayingAudio] = useState(null)
   const [editModal, setEditModal] = useState({ open: false, data: {} })
   const [actionModal, setActionModal] = useState({ open: false, type: null, alert: null })
-  const [ttlSettings, setTtlSettings] = useState({ Low: 30, Medium: 60, High: 120 })
+  const [ttlSettings, setTtlSettings] = useState(() => {
+    const saved = localStorage.getItem('adminTtlSettings')
+    return saved ? JSON.parse(saved) : { Low: 30, Medium: 60, High: 120 }
+  })
   const [settingsChanged, setSettingsChanged] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
+  
+  // Functional Settings State
+  const [alertSettings, setAlertSettings] = useState(() => {
+    const saved = localStorage.getItem('adminAlertSettings')
+    return saved ? JSON.parse(saved) : { verifiedBoostPercent: 50 }
+  })
+  const [notificationSettings, setNotificationSettings] = useState(() => {
+    const saved = localStorage.getItem('adminNotificationSettings')
+    return saved ? JSON.parse(saved) : {
+      pushNotifications: true,
+      soundEnabled: true,
+      digestMode: 'realtime'
+    }
+  })
+  const [displaySettings, setDisplaySettings] = useState(() => {
+    const saved = localStorage.getItem('adminDisplaySettings')
+    return saved ? JSON.parse(saved) : {
+      showThumbnails: true,
+      autoRefresh: true,
+      refreshInterval: 30
+    }
+  })
+  const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const [loggingOut, setLoggingOut] = useState(false)
   const audioRef = useRef(null)
   const notificationRef = useRef(null)
+  const profileRef = useRef(null)
+
+  // Handle logout
+  const handleLogout = async () => {
+    setLoggingOut(true)
+    await signOut()
+    navigate('/admin-login')
+  }
+
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      navigate('/admin-login')
+    }
+  }, [authLoading, isAuthenticated, navigate])
+
+  // Close profile menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (profileRef.current && !profileRef.current.contains(e.target)) {
+        setShowProfileMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   useEffect(() => {
     if (ctx?.severityTtl) setTtlSettings(ctx.severityTtl)
   }, [ctx?.severityTtl])
+
+  // Save settings to localStorage when they change
+  const saveAllSettings = () => {
+    localStorage.setItem('adminTtlSettings', JSON.stringify(ttlSettings))
+    localStorage.setItem('adminAlertSettings', JSON.stringify(alertSettings))
+    localStorage.setItem('adminNotificationSettings', JSON.stringify(notificationSettings))
+    localStorage.setItem('adminDisplaySettings', JSON.stringify(displaySettings))
+    ctx?.setSeverityTtl?.(ttlSettings)
+    setSettingsChanged(false)
+  }
+
+  // Auto-refresh effect
+  useEffect(() => {
+    if (!displaySettings.autoRefresh) return
+    const interval = setInterval(() => {
+      // Trigger a re-fetch or refresh action
+      if (ctx?.refreshAlerts) ctx.refreshAlerts()
+    }, displaySettings.refreshInterval * 1000)
+    return () => clearInterval(interval)
+  }, [displaySettings.autoRefresh, displaySettings.refreshInterval, ctx])
+
+  // Push Notifications - Request permission and show notifications
+  const [notificationPermission, setNotificationPermission] = useState(Notification?.permission || 'default')
+  const [previousAlertIds, setPreviousAlertIds] = useState(new Set())
+
+  // Request notification permission when push notifications are enabled
+  useEffect(() => {
+    if (notificationSettings.pushNotifications && Notification?.permission === 'default') {
+      Notification.requestPermission().then(permission => {
+        setNotificationPermission(permission)
+      })
+    }
+  }, [notificationSettings.pushNotifications])
+
+  // Show notification for new alerts
+  const showPushNotification = (alert) => {
+    if (!notificationSettings.pushNotifications) return
+    if (notificationPermission !== 'granted') return
+
+    const notification = new Notification(`🚨 ${alert.type}`, {
+      body: `${alert.severity} priority alert at ${alert.location || 'Unknown location'}`,
+      icon: '/favicon.ico',
+      tag: alert.id, // Prevents duplicate notifications
+      requireInteraction: alert.severity === 'High'
+    })
+
+    // Play sound if enabled
+    if (notificationSettings.soundEnabled && audioRef.current) {
+      audioRef.current.src = '/notification.mp3'
+      audioRef.current.play().catch(() => {}) // Ignore autoplay errors
+    }
+
+    notification.onclick = () => {
+      window.focus()
+      setActiveTab('alerts')
+      setSelectedAlert(alert)
+      notification.close()
+    }
+
+    // Auto-close after 5 seconds for non-high priority
+    if (alert.severity !== 'High') {
+      setTimeout(() => notification.close(), 5000)
+    }
+  }
+
+  // Watch for new alerts and trigger notifications
+  useEffect(() => {
+    if (!alerts.length) return
+    
+    const currentIds = new Set(alerts.map(a => a.id))
+    
+    // Find new alerts (ids that weren't in previous set)
+    alerts.forEach(alert => {
+      if (!previousAlertIds.has(alert.id) && previousAlertIds.size > 0) {
+        showPushNotification(alert)
+      }
+    })
+    
+    setPreviousAlertIds(currentIds)
+  }, [alerts, notificationSettings.pushNotifications, notificationSettings.soundEnabled, notificationPermission])
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 1024)
@@ -214,6 +351,23 @@ export default function AdminDashboard() {
     { id: 'settings', label: 'Settings', icon: SettingsIcon },
   ]
 
+  // Show loading state while checking authentication
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-slate-500 font-medium">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Redirect handled by useEffect, show nothing while redirecting
+  if (!isAuthenticated) {
+    return null
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <audio ref={audioRef} onEnded={() => setPlayingAudio(null)} className="hidden" />
@@ -237,13 +391,13 @@ export default function AdminDashboard() {
         <div className="flex-1 flex items-center justify-between px-2 sm:px-4 h-full min-w-0">
           {/* Breadcrumb / Context */}
           <div className="flex items-center gap-3">
-            {!isMobile && (
+            {!isMobile && activeTab === 'alerts' && (
               <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-lg">
                 <AdminPanelSettingsIcon className="text-emerald-600" style={{ fontSize: 16 }} />
                 <span className="text-sm font-medium text-slate-700">Alert Management</span>
               </div>
             )}
-            {!isMobile && (
+            {!isMobile && activeTab === 'alerts' && (
               <div className="hidden xl:flex items-center gap-1 text-xs text-slate-400">
                 <span className="px-2 py-1 bg-slate-50 rounded border border-slate-200 font-mono">V</span>
                 <span>Verify</span>
@@ -354,13 +508,55 @@ export default function AdminDashboard() {
             </button>
 
             {/* Admin Profile Dropdown */}
-            <div className="flex items-center gap-1.5 sm:gap-2 pl-1.5 sm:pl-2 ml-1 border-l border-slate-200">
-              <div className="w-7 h-7 sm:w-8 sm:h-8 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-full flex items-center justify-center text-white font-bold text-xs sm:text-sm shadow-sm">A</div>
-              <div className="hidden lg:flex flex-col">
-                <span className="text-sm font-semibold text-slate-800 leading-tight">Admin</span>
-                <span className="text-[10px] text-slate-500">Manager</span>
-              </div>
-              <ExpandMoreIcon className="hidden lg:block text-slate-400" style={{ fontSize: 18 }} />
+            <div className="relative" ref={profileRef}>
+              <button 
+                onClick={() => setShowProfileMenu(!showProfileMenu)}
+                className="flex items-center gap-1.5 sm:gap-2 pl-1.5 sm:pl-2 ml-1 border-l border-slate-200 hover:bg-slate-50 rounded-lg py-1 pr-2 transition-colors"
+              >
+                {user?.photoURL ? (
+                  <img src={user.photoURL} alt="Profile" className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover border-2 border-emerald-500" />
+                ) : (
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-full flex items-center justify-center text-white font-bold text-xs sm:text-sm shadow-sm">
+                    {user?.displayName?.charAt(0) || user?.email?.charAt(0) || 'A'}
+                  </div>
+                )}
+                <div className="hidden lg:flex flex-col">
+                  <span className="text-sm font-semibold text-slate-800 leading-tight">{user?.displayName || 'Admin'}</span>
+                  <span className="text-[10px] text-slate-500 truncate max-w-[120px]">{user?.email || 'admin@roadguard.com'}</span>
+                </div>
+                <ExpandMoreIcon className={`hidden lg:block text-slate-400 transition-transform ${showProfileMenu ? 'rotate-180' : ''}`} style={{ fontSize: 18 }} />
+              </button>
+              
+              {/* Profile Dropdown Menu */}
+              {showProfileMenu && (
+                <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50">
+                  <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
+                    <div className="flex items-center gap-3">
+                      {user?.photoURL ? (
+                        <img src={user.photoURL} alt="Profile" className="w-10 h-10 rounded-full object-cover border-2 border-emerald-500" />
+                      ) : (
+                        <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-full flex items-center justify-center text-white font-bold">
+                          {user?.displayName?.charAt(0) || user?.email?.charAt(0) || 'A'}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-slate-800 truncate">{user?.displayName || 'Admin User'}</p>
+                        <p className="text-xs text-slate-500 truncate">{user?.email}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-2">
+                    <button 
+                      onClick={handleLogout}
+                      disabled={loggingOut}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      <LogoutIcon style={{ fontSize: 18 }} />
+                      <span className="text-sm font-medium">{loggingOut ? 'Signing out...' : 'Sign Out'}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -392,9 +588,9 @@ export default function AdminDashboard() {
         {/* Main Content */}
         <main className="flex-1 min-h-[calc(100vh-56px)]">
           {activeTab === 'dashboard' && <DashboardTab stats={stats} alerts={alerts} isMobile={isMobile} />}
-          {activeTab === 'alerts' && <AlertsTab isMobile={isMobile} filteredAlerts={filteredAlerts} selectedAlert={selectedAlert} selectAlert={selectAlert} searchQuery={searchQuery} setSearchQuery={setSearchQuery} selectedFilter={selectedFilter} setSelectedFilter={setSelectedFilter} alerts={alerts} handleVerify={handleVerify} handleDelete={handleDelete} openEditModal={openEditModal} setActionModal={setActionModal} playingAudio={playingAudio} toggleAudio={toggleAudio} getCommentsForAlert={getCommentsForAlert} />}
-          {activeTab === 'history' && <HistoryTab alerts={alerts} isMobile={isMobile} />}
-          {activeTab === 'settings' && <SettingsTab ttlSettings={ttlSettings} setTtlSettings={setTtlSettings} settingsChanged={settingsChanged} setSettingsChanged={setSettingsChanged} ctx={ctx} isMobile={isMobile} />}
+          {activeTab === 'alerts' && <AlertsTab isMobile={isMobile} filteredAlerts={filteredAlerts} selectedAlert={selectedAlert} selectAlert={selectAlert} searchQuery={searchQuery} setSearchQuery={setSearchQuery} selectedFilter={selectedFilter} setSelectedFilter={setSelectedFilter} alerts={alerts} handleVerify={handleVerify} handleDelete={handleDelete} openEditModal={openEditModal} setActionModal={setActionModal} playingAudio={playingAudio} toggleAudio={toggleAudio} getCommentsForAlert={getCommentsForAlert} displaySettings={displaySettings} />}
+          {activeTab === 'history' && <HistoryTab alerts={alerts} isMobile={isMobile} displaySettings={displaySettings} />}
+          {activeTab === 'settings' && <SettingsTab ttlSettings={ttlSettings} setTtlSettings={setTtlSettings} alertSettings={alertSettings} setAlertSettings={setAlertSettings} notificationSettings={notificationSettings} setNotificationSettings={setNotificationSettings} displaySettings={displaySettings} setDisplaySettings={setDisplaySettings} settingsChanged={settingsChanged} setSettingsChanged={setSettingsChanged} saveAllSettings={saveAllSettings} isMobile={isMobile} notificationPermission={notificationPermission} />}
         </main>
       </div>
 
@@ -959,13 +1155,7 @@ function HistoryTab({ alerts, isMobile }) {
     return result
   }, [alerts, historyFilter, historySearch, sortOrder, selectedTimeRange])
 
-  // Stats for history
-  const historyStats = useMemo(() => ({
-    total: alerts.length,
-    verified: alerts.filter(a => a.verified).length,
-    high: alerts.filter(a => a.severity === 'High').length,
-    thisWeek: alerts.filter(a => new Date(a.timestamp) >= new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)).length
-  }), [alerts])
+
 
   // Group by date for timeline view
   const groupedByDate = useMemo(() => {
@@ -1032,21 +1222,7 @@ function HistoryTab({ alerts, isMobile }) {
           </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-4 gap-2 p-4">
-          {[
-            { label: 'Total', value: historyStats.total, color: 'bg-slate-100 text-slate-700' },
-            { label: 'Verified', value: historyStats.verified, color: 'bg-blue-50 text-blue-700' },
-            { label: 'High', value: historyStats.high, color: 'bg-red-50 text-red-700' },
-            { label: 'This Week', value: historyStats.thisWeek, color: 'bg-emerald-50 text-emerald-700' }
-          ].map((stat, idx) => (
-            <div key={idx} className={`${stat.color} rounded-xl p-2.5 text-center`}>
-              <p className="text-lg font-bold">{stat.value}</p>
-              <p className="text-[10px] font-medium opacity-80">{stat.label}</p>
-            </div>
-          ))}
-        </div>
-
+       
         {/* Timeline View */}
         <div className="px-4 space-y-4">
           {Object.keys(groupedByDate).length === 0 ? (
@@ -1140,26 +1316,7 @@ function HistoryTab({ alerts, isMobile }) {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
         <div className="max-w-[1400px] mx-auto">
-          {/* Stats Row */}
-          <div className="grid grid-cols-4 gap-4 mb-6">
-            {[
-              { icon: HistoryIcon, label: 'Total Alerts', value: historyStats.total, color: 'bg-slate-50 border-slate-200', iconColor: 'text-slate-500' },
-              { icon: VerifiedIcon, label: 'Verified', value: historyStats.verified, color: 'bg-blue-50 border-blue-200', iconColor: 'text-blue-500' },
-              { icon: WarningAmberIcon, label: 'High Priority', value: historyStats.high, color: 'bg-red-50 border-red-200', iconColor: 'text-red-500' },
-              { icon: TrendingUpIcon, label: 'This Week', value: historyStats.thisWeek, color: 'bg-emerald-50 border-emerald-200', iconColor: 'text-emerald-500' }
-            ].map((stat, idx) => (
-              <div key={idx} className={`${stat.color} border rounded-xl p-4 flex items-center gap-4`}>
-                <div className={`w-12 h-12 rounded-xl bg-white flex items-center justify-center ${stat.iconColor}`}>
-                  <stat.icon style={{ fontSize: 24 }} />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-slate-800">{stat.value}</p>
-                  <p className="text-sm text-slate-500">{stat.label}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-
+          
           {/* Filters Bar */}
           <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
             <div className="flex items-center gap-4 flex-wrap">
@@ -1346,30 +1503,21 @@ function HistoryTab({ alerts, isMobile }) {
 }
 
 // Settings Tab
-function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettingsChanged, ctx, isMobile }) {
+function SettingsTab({ ttlSettings, setTtlSettings, alertSettings, setAlertSettings, notificationSettings, setNotificationSettings, displaySettings, setDisplaySettings, settingsChanged, setSettingsChanged, saveAllSettings, isMobile, notificationPermission }) {
   const [activeSettingsSection, setActiveSettingsSection] = useState('alerts')
-  const [notificationSettings, setNotificationSettings] = useState({
-    emailAlerts: true,
-    pushNotifications: true,
-    highPriorityOnly: false,
-    soundEnabled: true,
-    digestMode: 'realtime'
-  })
-  const [displaySettings, setDisplaySettings] = useState({
-    compactView: false,
-    showThumbnails: true,
-    autoRefresh: true,
-    refreshInterval: 30,
-    darkMode: false,
-    mapStyle: 'streets'
-  })
   const [moderationSettings, setModerationSettings] = useState({
-    autoVerifyThreshold: 5,
     requirePhotoEvidence: false,
     allowAnonymous: true,
     profanityFilter: true,
     spamDetection: true
   })
+
+  // Request notification permission
+  const requestNotificationPermission = async () => {
+    if (Notification?.permission === 'default') {
+      await Notification.requestPermission()
+    }
+  }
 
   const settingsSections = [
     { id: 'alerts', label: 'Alerts', icon: ReportIcon },
@@ -1387,7 +1535,7 @@ function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettings
           <div className="flex items-center justify-between">
             <h1 className="text-lg font-bold text-slate-800">Settings</h1>
             <button 
-              onClick={() => { ctx?.setSeverityTtl?.(ttlSettings); setSettingsChanged(false) }} 
+              onClick={saveAllSettings} 
               disabled={!settingsChanged}
               className={`px-3 py-1.5 rounded-lg font-medium flex items-center gap-1.5 text-sm transition-colors ${
                 settingsChanged ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'
@@ -1485,35 +1633,25 @@ function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettings
                 </div>
               </div>
 
-              {/* Priority Rules */}
+              {/* Verified Boost */}
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <div className="px-4 py-3 bg-gradient-to-r from-violet-50 to-white border-b border-slate-100 flex items-center gap-2">
                   <div className="w-8 h-8 bg-violet-100 rounded-lg flex items-center justify-center">
-                    <TrendingUpIcon className="text-violet-600" style={{ fontSize: 18 }} />
+                    <VerifiedIcon className="text-violet-600" style={{ fontSize: 18 }} />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-slate-800 text-sm">Priority Rules</h3>
-                    <p className="text-[11px] text-slate-500">Alert escalation settings</p>
+                    <h3 className="font-semibold text-slate-800 text-sm">Verified Boost</h3>
+                    <p className="text-[11px] text-slate-500">Extend TTL for verified alerts</p>
                   </div>
                 </div>
-                <div className="p-4 space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <ThumbUpIcon className="text-green-500" style={{ fontSize: 16 }} />
-                      <span className="font-medium text-slate-700 text-sm">Auto-escalate</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <input type="number" defaultValue={10} className="w-14 px-2 py-1.5 border border-slate-200 rounded text-center text-sm font-medium" min="1" />
-                      <span className="text-xs text-slate-500">votes</span>
-                    </div>
-                  </div>
+                <div className="p-4">
                   <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                     <div className="flex items-center gap-2">
                       <VerifiedIcon className="text-blue-500" style={{ fontSize: 16 }} />
-                      <span className="font-medium text-slate-700 text-sm">Verified boost</span>
+                      <span className="font-medium text-slate-700 text-sm">TTL Extension</span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <input type="number" defaultValue={50} className="w-14 px-2 py-1.5 border border-slate-200 rounded text-center text-sm font-medium" min="0" />
+                      <input type="number" value={alertSettings.verifiedBoostPercent} onChange={(e) => { setAlertSettings(prev => ({ ...prev, verifiedBoostPercent: parseInt(e.target.value) || 0 })); setSettingsChanged(true) }} className="w-14 px-2 py-1.5 border border-slate-200 rounded text-center text-sm font-medium" min="0" />
                       <span className="text-xs text-slate-500">%</span>
                     </div>
                   </div>
@@ -1535,10 +1673,39 @@ function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettings
                 </div>
               </div>
               <div className="p-4 space-y-3">
+                {/* Push Notifications with permission status */}
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span>🔔</span>
+                      <span className="font-medium text-slate-700 text-sm">Push Notifications</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 ml-6 mt-0.5">
+                      {notificationPermission === 'granted' ? '✅ Enabled' : 
+                       notificationPermission === 'denied' ? '❌ Blocked' : 
+                       '⚠️ Permission needed'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {notificationPermission === 'default' && (
+                      <button
+                        onClick={requestNotificationPermission}
+                        className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-[10px] font-medium"
+                      >
+                        Allow
+                      </button>
+                    )}
+                    <button
+                      onClick={() => { setNotificationSettings(prev => ({ ...prev, pushNotifications: !prev.pushNotifications })); setSettingsChanged(true); }}
+                      className={`relative w-10 h-6 rounded-full transition-all ${notificationSettings.pushNotifications ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                    >
+                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${notificationSettings.pushNotifications ? 'left-5' : 'left-1'}`} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Other settings */}
                 {[
-                  { key: 'emailAlerts', label: 'Email Alerts', icon: '📧' },
-                  { key: 'pushNotifications', label: 'Push Notifications', icon: '🔔' },
-                  { key: 'highPriorityOnly', label: 'High Priority Only', icon: '🚨' },
                   { key: 'soundEnabled', label: 'Sound Alerts', icon: '🔊' }
                 ].map(({ key, label, icon }) => (
                   <div key={key} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
@@ -1547,7 +1714,7 @@ function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettings
                       <span className="font-medium text-slate-700 text-sm">{label}</span>
                     </div>
                     <button
-                      onClick={() => setNotificationSettings(prev => ({ ...prev, [key]: !prev[key] }))}
+                      onClick={() => { setNotificationSettings(prev => ({ ...prev, [key]: !prev[key] })); setSettingsChanged(true); }}
                       className={`relative w-10 h-6 rounded-full transition-all ${notificationSettings[key] ? 'bg-emerald-500' : 'bg-slate-300'}`}
                     >
                       <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${notificationSettings[key] ? 'left-5' : 'left-1'}`} />
@@ -1566,7 +1733,7 @@ function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettings
                     ].map(mode => (
                       <button
                         key={mode.id}
-                        onClick={() => setNotificationSettings(prev => ({ ...prev, digestMode: mode.id }))}
+                        onClick={() => { setNotificationSettings(prev => ({ ...prev, digestMode: mode.id })); setSettingsChanged(true); }}
                         className={`py-2 rounded-lg border-2 text-xs font-medium transition-all ${
                           notificationSettings.digestMode === mode.id
                             ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
@@ -1596,7 +1763,6 @@ function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettings
               </div>
               <div className="p-4 space-y-3">
                 {[
-                  { key: 'compactView', label: 'Compact View', icon: '📐' },
                   { key: 'showThumbnails', label: 'Show Thumbnails', icon: '🖼️' },
                   { key: 'autoRefresh', label: 'Auto Refresh', icon: '🔄' }
                 ].map(({ key, label, icon }) => (
@@ -1606,7 +1772,7 @@ function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettings
                       <span className="font-medium text-slate-700 text-sm">{label}</span>
                     </div>
                     <button
-                      onClick={() => setDisplaySettings(prev => ({ ...prev, [key]: !prev[key] }))}
+                      onClick={() => { setDisplaySettings(prev => ({ ...prev, [key]: !prev[key] })); setSettingsChanged(true); }}
                       className={`relative w-10 h-6 rounded-full transition-all ${displaySettings[key] ? 'bg-emerald-500' : 'bg-slate-300'}`}
                     >
                       <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${displaySettings[key] ? 'left-5' : 'left-1'}`} />
@@ -1620,37 +1786,13 @@ function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettings
                       <span className="font-medium text-slate-700 text-sm">Refresh Interval</span>
                       <div className="flex items-center gap-2">
                         <input type="range" min="10" max="120" step="10" value={displaySettings.refreshInterval}
-                          onChange={(e) => setDisplaySettings(prev => ({ ...prev, refreshInterval: parseInt(e.target.value) }))}
+                          onChange={(e) => { setDisplaySettings(prev => ({ ...prev, refreshInterval: parseInt(e.target.value) })); setSettingsChanged(true); }}
                           className="w-20 accent-emerald-500" />
                         <span className="text-sm font-medium text-slate-700 w-8">{displaySettings.refreshInterval}s</span>
                       </div>
                     </div>
                   </div>
                 )}
-
-                {/* Map Style */}
-                <div className="pt-3 border-t border-slate-100">
-                  <p className="text-xs text-slate-500 mb-2">Map Style:</p>
-                  <div className="grid grid-cols-4 gap-2">
-                    {[
-                      { id: 'streets', label: 'Streets', color: 'bg-blue-100' },
-                      { id: 'satellite', label: 'Satellite', color: 'bg-green-100' },
-                      { id: 'dark', label: 'Dark', color: 'bg-slate-700' },
-                      { id: 'light', label: 'Light', color: 'bg-slate-100' }
-                    ].map(style => (
-                      <button
-                        key={style.id}
-                        onClick={() => setDisplaySettings(prev => ({ ...prev, mapStyle: style.id }))}
-                        className={`p-2 rounded-lg border-2 transition-all ${
-                          displaySettings.mapStyle === style.id ? 'border-emerald-500' : 'border-slate-200'
-                        }`}
-                      >
-                        <div className={`w-full h-6 rounded ${style.color} mb-1`} />
-                        <p className="text-[10px] font-medium text-slate-600 truncate">{style.label}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
               </div>
             </div>
           )}
@@ -1668,19 +1810,6 @@ function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettings
                 </div>
               </div>
               <div className="p-4 space-y-3">
-                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <span>✅</span>
-                    <span className="font-medium text-slate-700 text-sm">Auto-verify</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <input type="number" value={moderationSettings.autoVerifyThreshold}
-                      onChange={(e) => setModerationSettings(prev => ({ ...prev, autoVerifyThreshold: parseInt(e.target.value) || 0 }))}
-                      className="w-14 px-2 py-1.5 border border-slate-200 rounded text-center text-sm font-medium" min="1" />
-                    <span className="text-xs text-slate-500">votes</span>
-                  </div>
-                </div>
-
                 {[
                   { key: 'requirePhotoEvidence', label: 'Require Photo', icon: '📷' },
                   { key: 'allowAnonymous', label: 'Allow Anonymous', icon: '👤' },
@@ -1693,7 +1822,7 @@ function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettings
                       <span className="font-medium text-slate-700 text-sm">{label}</span>
                     </div>
                     <button
-                      onClick={() => setModerationSettings(prev => ({ ...prev, [key]: !prev[key] }))}
+                      onClick={() => { setModerationSettings(prev => ({ ...prev, [key]: !prev[key] })); setSettingsChanged(true); }}
                       className={`relative w-10 h-6 rounded-full transition-all ${moderationSettings[key] ? 'bg-emerald-500' : 'bg-slate-300'}`}
                     >
                       <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${moderationSettings[key] ? 'left-5' : 'left-1'}`} />
@@ -1792,7 +1921,7 @@ function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettings
             <p className="text-sm text-slate-500">Configure dashboard preferences and alert management</p>
           </div>
           <button 
-            onClick={() => { ctx?.setSeverityTtl?.(ttlSettings); setSettingsChanged(false) }} 
+            onClick={saveAllSettings} 
             disabled={!settingsChanged}
             className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all text-sm ${
               settingsChanged 
@@ -1917,41 +2046,28 @@ function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettings
                   </div>
                 </div>
 
-                {/* Alert Priority Rules */}
+                {/* Verified Boost */}
                 <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                   <div className="px-5 py-3 bg-gradient-to-r from-violet-50 to-white border-b border-slate-100 flex items-center gap-3">
                     <div className="w-9 h-9 bg-violet-100 rounded-lg flex items-center justify-center">
-                      <TrendingUpIcon className="text-violet-600" style={{ fontSize: 20 }} />
+                      <VerifiedIcon className="text-violet-600" style={{ fontSize: 20 }} />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-slate-800 text-sm">Priority Escalation Rules</h3>
-                      <p className="text-xs text-slate-500">Define when alerts should be escalated</p>
+                      <h3 className="font-semibold text-slate-800 text-sm">Verified Alerts Boost</h3>
+                      <p className="text-xs text-slate-500">Extend TTL for verified alerts</p>
                     </div>
                   </div>
-                  <div className="p-4 space-y-3">
-                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <ThumbUpIcon className="text-green-500" style={{ fontSize: 18 }} />
-                        <div>
-                          <p className="font-medium text-slate-800 text-sm">Auto-escalate on upvotes</p>
-                          <p className="text-[11px] text-slate-500">Promote when threshold reached</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <input type="number" defaultValue={10} className="w-16 px-2 py-1.5 border border-slate-200 rounded text-center text-sm font-medium focus:ring-2 focus:ring-violet-500" min="1" />
-                        <span className="text-xs text-slate-500">votes</span>
-                      </div>
-                    </div>
+                  <div className="p-4">
                     <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                       <div className="flex items-center gap-2">
                         <VerifiedIcon className="text-blue-500" style={{ fontSize: 18 }} />
                         <div>
-                          <p className="font-medium text-slate-800 text-sm">Verified alerts boost</p>
-                          <p className="text-[11px] text-slate-500">Extend TTL for verified</p>
+                          <p className="font-medium text-slate-800 text-sm">TTL Extension</p>
+                          <p className="text-[11px] text-slate-500">Percentage boost for verified alerts</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <input type="number" defaultValue={50} className="w-16 px-2 py-1.5 border border-slate-200 rounded text-center text-sm font-medium focus:ring-2 focus:ring-violet-500" min="0" />
+                        <input type="number" value={alertSettings.verifiedBoostPercent} onChange={(e) => { setAlertSettings(prev => ({ ...prev, verifiedBoostPercent: parseInt(e.target.value) || 0 })); setSettingsChanged(true) }} className="w-16 px-2 py-1.5 border border-slate-200 rounded text-center text-sm font-medium focus:ring-2 focus:ring-violet-500" min="0" />
                         <span className="text-xs text-slate-500">%</span>
                       </div>
                     </div>
@@ -1973,10 +2089,39 @@ function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettings
                   </div>
                 </div>
                 <div className="p-4 space-y-3">
+                  {/* Push Notifications with permission status */}
+                  <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">🔔</span>
+                      <div>
+                        <p className="font-medium text-slate-800 text-sm">Push Notifications</p>
+                        <p className="text-[11px] text-slate-500">
+                          {notificationPermission === 'granted' ? '✅ Browser notifications enabled' : 
+                           notificationPermission === 'denied' ? '❌ Blocked by browser' : 
+                           '⚠️ Permission required'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {notificationPermission === 'default' && (
+                        <button
+                          onClick={requestNotificationPermission}
+                          className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium hover:bg-blue-200"
+                        >
+                          Allow
+                        </button>
+                      )}
+                      <button
+                        onClick={() => { setNotificationSettings(prev => ({ ...prev, pushNotifications: !prev.pushNotifications })); setSettingsChanged(true); }}
+                        className={`relative w-10 h-6 rounded-full transition-all ${notificationSettings.pushNotifications ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                      >
+                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${notificationSettings.pushNotifications ? 'left-5' : 'left-1'}`} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Other notification settings */}
                   {[
-                    { key: 'emailAlerts', label: 'Email Notifications', desc: 'Receive via email', icon: '📧' },
-                    { key: 'pushNotifications', label: 'Push Notifications', desc: 'Browser notifications', icon: '🔔' },
-                    { key: 'highPriorityOnly', label: 'High Priority Only', desc: 'Only high severity', icon: '🚨' },
                     { key: 'soundEnabled', label: 'Sound Alerts', desc: 'Play sound', icon: '🔊' }
                   ].map(({ key, label, desc, icon }) => (
                     <div key={key} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
@@ -1988,7 +2133,7 @@ function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettings
                         </div>
                       </div>
                       <button
-                        onClick={() => setNotificationSettings(prev => ({ ...prev, [key]: !prev[key] }))}
+                        onClick={() => { setNotificationSettings(prev => ({ ...prev, [key]: !prev[key] })); setSettingsChanged(true); }}
                         className={`relative w-10 h-6 rounded-full transition-all ${notificationSettings[key] ? 'bg-emerald-500' : 'bg-slate-300'}`}
                       >
                         <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${notificationSettings[key] ? 'left-5' : 'left-1'}`} />
@@ -2007,7 +2152,7 @@ function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettings
                       ].map(mode => (
                         <button
                           key={mode.id}
-                          onClick={() => setNotificationSettings(prev => ({ ...prev, digestMode: mode.id }))}
+                          onClick={() => { setNotificationSettings(prev => ({ ...prev, digestMode: mode.id })); setSettingsChanged(true); }}
                           className={`py-2 px-3 rounded-lg border-2 transition-all text-sm font-medium ${
                             notificationSettings.digestMode === mode.id
                               ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
@@ -2037,7 +2182,6 @@ function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettings
                 </div>
                 <div className="p-4 space-y-3">
                   {[
-                    { key: 'compactView', label: 'Compact View', desc: 'More alerts in less space', icon: '📐' },
                     { key: 'showThumbnails', label: 'Show Thumbnails', desc: 'Photo previews', icon: '🖼️' },
                     { key: 'autoRefresh', label: 'Auto Refresh', desc: 'Auto-refresh data', icon: '🔄' }
                   ].map(({ key, label, desc, icon }) => (
@@ -2050,7 +2194,7 @@ function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettings
                         </div>
                       </div>
                       <button
-                        onClick={() => setDisplaySettings(prev => ({ ...prev, [key]: !prev[key] }))}
+                        onClick={() => { setDisplaySettings(prev => ({ ...prev, [key]: !prev[key] })); setSettingsChanged(true); }}
                         className={`relative w-10 h-6 rounded-full transition-all ${displaySettings[key] ? 'bg-emerald-500' : 'bg-slate-300'}`}
                       >
                         <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${displaySettings[key] ? 'left-5' : 'left-1'}`} />
@@ -2064,36 +2208,13 @@ function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettings
                         <p className="font-medium text-slate-800 text-sm">Refresh Interval</p>
                         <div className="flex items-center gap-2">
                           <input type="range" min="10" max="120" step="10" value={displaySettings.refreshInterval}
-                            onChange={(e) => setDisplaySettings(prev => ({ ...prev, refreshInterval: parseInt(e.target.value) }))}
+                            onChange={(e) => { setDisplaySettings(prev => ({ ...prev, refreshInterval: parseInt(e.target.value) })); setSettingsChanged(true); }}
                             className="w-24 accent-emerald-500" />
                           <span className="w-10 text-center font-medium text-slate-700 text-sm">{displaySettings.refreshInterval}s</span>
                         </div>
                       </div>
                     </div>
                   )}
-
-                  <div className="pt-3 border-t border-slate-200">
-                    <h4 className="font-medium text-slate-700 text-sm mb-2">Map Style</h4>
-                    <div className="grid grid-cols-4 gap-2">
-                      {[
-                        { id: 'streets', label: 'Streets', color: 'bg-blue-100' },
-                        { id: 'satellite', label: 'Satellite', color: 'bg-green-100' },
-                        { id: 'dark', label: 'Dark', color: 'bg-slate-700' },
-                        { id: 'light', label: 'Light', color: 'bg-slate-100' }
-                      ].map(style => (
-                        <button
-                          key={style.id}
-                          onClick={() => setDisplaySettings(prev => ({ ...prev, mapStyle: style.id }))}
-                          className={`p-2 rounded-lg border-2 transition-all ${
-                            displaySettings.mapStyle === style.id ? 'border-emerald-500' : 'border-slate-200 hover:border-slate-300'
-                          }`}
-                        >
-                          <div className={`w-full h-8 rounded ${style.color} mb-1`} />
-                          <p className="text-[11px] font-medium text-slate-700">{style.label}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
                 </div>
               </div>
             )}
@@ -2111,22 +2232,6 @@ function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettings
                   </div>
                 </div>
                 <div className="p-4 space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">✅</span>
-                      <div>
-                        <p className="font-medium text-slate-800 text-sm">Auto-verify threshold</p>
-                        <p className="text-[11px] text-slate-500">Verify with enough upvotes</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input type="number" value={moderationSettings.autoVerifyThreshold}
-                        onChange={(e) => setModerationSettings(prev => ({ ...prev, autoVerifyThreshold: parseInt(e.target.value) || 0 }))}
-                        className="w-16 px-2 py-1.5 border border-slate-200 rounded text-center text-sm font-medium focus:ring-2 focus:ring-orange-500" min="1" />
-                      <span className="text-xs text-slate-500">votes</span>
-                    </div>
-                  </div>
-
                   {[
                     { key: 'requirePhotoEvidence', label: 'Require Photo', desc: 'Must include photo', icon: '📷' },
                     { key: 'allowAnonymous', label: 'Allow Anonymous', desc: 'Submit without login', icon: '👤' },
@@ -2142,7 +2247,7 @@ function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettings
                         </div>
                       </div>
                       <button
-                        onClick={() => setModerationSettings(prev => ({ ...prev, [key]: !prev[key] }))}
+                        onClick={() => { setModerationSettings(prev => ({ ...prev, [key]: !prev[key] })); setSettingsChanged(true); }}
                         className={`relative w-10 h-6 rounded-full transition-all ${moderationSettings[key] ? 'bg-emerald-500' : 'bg-slate-300'}`}
                       >
                         <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${moderationSettings[key] ? 'left-5' : 'left-1'}`} />
@@ -2167,19 +2272,6 @@ function SettingsTab({ ttlSettings, setTtlSettings, settingsChanged, setSettings
                     </div>
                   </div>
                   <div className="p-4 space-y-3">
-                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg">📊</span>
-                        <div>
-                          <p className="font-medium text-slate-800 text-sm">Export All Data</p>
-                          <p className="text-[11px] text-slate-500">Download as JSON</p>
-                        </div>
-                      </div>
-                      <button className="px-3 py-1.5 bg-emerald-500 text-white rounded text-xs font-medium hover:bg-emerald-600 transition-colors flex items-center gap-1">
-                        <FileDownloadIcon style={{ fontSize: 14 }} /> Export
-                      </button>
-                    </div>
-
                     <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                       <div className="flex items-center gap-2">
                         <span className="text-lg">🗑️</span>

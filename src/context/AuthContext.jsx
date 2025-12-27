@@ -3,6 +3,7 @@ import { createContext, useContext, useState, useEffect } from 'react'
 import { onAuthStateChanged } from 'firebase/auth'
 import { auth } from '../config/firebase'
 import authService from '../services/authService'
+import { isAdminEmail } from '../config/adminConfig'
 
 const AuthContext = createContext(null)
 
@@ -81,8 +82,10 @@ export function AuthProvider({ children }) {
     return result
   }
 
-  // Check if user is admin
+  // Check if user is admin (based on email whitelist)
   const isAdmin = () => {
+    // Check email whitelist first, then fall back to role
+    if (isAdminEmail(user?.email)) return true
     return user?.role === 'admin'
   }
 
