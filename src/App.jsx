@@ -13,7 +13,7 @@ import Settings from './pages/Settings'
 
 function AppContent() {
   const location = useLocation()
-  const hideNavbar = ['/login', '/settings', '/admin'].includes(location.pathname)
+  const hideNavbar = ['/login', '/settings', '/admin', '/report'].includes(location.pathname)
 
   return (
     <div className="min-h-screen bg-slate-50">
