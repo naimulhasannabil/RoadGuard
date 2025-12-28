@@ -80,6 +80,29 @@ export default function AdminDashboard() {
   const [playingAudio, setPlayingAudio] = useState(null)
   const [editModal, setEditModal] = useState({ open: false, data: {} })
   const [actionModal, setActionModal] = useState({ open: false, type: null, alert: null })
+  
+  // Banned Users State (stored in localStorage)
+  const [bannedUsers, setBannedUsers] = useState(() => {
+    const saved = localStorage.getItem('bannedUsers')
+    return saved ? JSON.parse(saved) : []
+  })
+  
+  // Save banned users to localStorage whenever it changes
+  const banUser = (username) => {
+    if (!username || bannedUsers.includes(username)) return
+    const updated = [...bannedUsers, username]
+    setBannedUsers(updated)
+    localStorage.setItem('bannedUsers', JSON.stringify(updated))
+  }
+  
+  const unbanUser = (username) => {
+    const updated = bannedUsers.filter(u => u !== username)
+    setBannedUsers(updated)
+    localStorage.setItem('bannedUsers', JSON.stringify(updated))
+  }
+  
+  const isUserBanned = (username) => bannedUsers.includes(username)
+  
   const [ttlSettings, setTtlSettings] = useState(() => {
     const saved = localStorage.getItem('adminTtlSettings')
     return saved ? JSON.parse(saved) : { Low: 30, Medium: 60, High: 120 }
@@ -621,7 +644,7 @@ export default function AdminDashboard() {
       {editModal.open && <EditModal editModal={editModal} setEditModal={setEditModal} saveEdit={saveEdit} />}
 
       {/* Action Modal */}
-      {actionModal.open && <ActionModal actionModal={actionModal} setActionModal={setActionModal} />}
+      {actionModal.open && <ActionModal actionModal={actionModal} setActionModal={setActionModal} banUser={banUser} />}
     </div>
   )
 }
@@ -2719,7 +2742,17 @@ function EditModal({ editModal, setEditModal, saveEdit }) {
 }
 
 // Action Modal
-function ActionModal({ actionModal, setActionModal }) {
+function ActionModal({ actionModal, setActionModal, banUser }) {
+  const handleConfirm = () => {
+    if (actionModal.type === 'ban' && actionModal.alert?.contributor) {
+      banUser(actionModal.alert.contributor)
+      alert(`User @${actionModal.alert.contributor} has been banned!`)
+    } else if (actionModal.type === 'warn') {
+      alert(`Warning sent to @${actionModal.alert?.contributor || 'user'}!`)
+    }
+    setActionModal({ open: false, type: null, alert: null })
+  }
+  
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setActionModal({ open: false, type: null, alert: null })}>
       <div className="bg-white rounded-xl w-full max-w-sm p-5 text-center" onClick={e => e.stopPropagation()}>
@@ -2730,7 +2763,7 @@ function ActionModal({ actionModal, setActionModal }) {
         <p className="text-slate-500 text-sm mb-4">{actionModal.type === 'ban' ? `Ban @${actionModal.alert?.contributor || 'user'} from submitting?` : `Warn @${actionModal.alert?.contributor || 'user'}?`}</p>
         <div className="flex gap-2">
           <button onClick={() => setActionModal({ open: false, type: null, alert: null })} className="flex-1 px-4 py-2 border border-slate-200 rounded-lg font-medium text-slate-600">Cancel</button>
-          <button onClick={() => { console.log(`${actionModal.type} user`); setActionModal({ open: false, type: null, alert: null }) }}
+          <button onClick={handleConfirm}
             className={`flex-1 px-4 py-2 rounded-lg font-medium text-white ${actionModal.type === 'ban' ? 'bg-red-500 hover:bg-red-600' : 'bg-yellow-500 hover:bg-yellow-600'}`}>
             {actionModal.type === 'ban' ? 'Ban' : 'Warn'}
           </button>
